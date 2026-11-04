@@ -1,0 +1,100 @@
+export type Shared = {
+    auth: {
+        user: { id: number; name: string; email: string; role: string } | null;
+    };
+    flash: { status: string | null };
+    [key: string]: unknown;
+};
+export type Paginated<T> = {
+    data: T[];
+    current_page: number;
+    last_page: number;
+    total: number;
+    from: number | null;
+    to: number | null;
+    prev_page_url: string | null;
+    next_page_url: string | null;
+};
+export type Product = {
+    id: number;
+    sku: string;
+    name: string;
+    category: string;
+    unit_label: string;
+    unit_price_rp: number;
+    shipping_weight_g: number;
+    shipping_volume_cm3: number;
+    length_mm: number;
+    width_mm: number;
+    height_mm: number;
+    handling_notes: string | null;
+    is_active: boolean;
+    lock_version: number;
+    physical_quantity?: number | string | null;
+    reserved_quantity?: number | string | null;
+    quarantine_quantity?: number | string | null;
+};
+export type Depot = {
+    id: number;
+    name: string;
+    address_text: string | null;
+    latitude: string | null;
+    longitude: string | null;
+    timezone: string;
+    service_radius_m: number | null;
+    delivery_fee_rp: number | null;
+    pending_ttl_minutes: number;
+    default_service_seconds: number;
+    lock_version: number;
+};
+export type Slot = {
+    id: number;
+    service_date: string;
+    window_start_at: string;
+    window_end_at: string;
+    cutoff_at: string;
+    is_active: boolean;
+    lock_version: number;
+};
+export type OrderItem = {
+    id: number;
+    product_name_snapshot: string;
+    unit_label_snapshot: string;
+    quantity: number;
+    unit_price_rp: number;
+    line_total_rp: number;
+    unit_weight_g: number;
+    unit_volume_cm3: number;
+    handling_notes_snapshot: string | null;
+};
+export type Order = {
+    id: number;
+    order_number: string;
+    recipient_name: string;
+    recipient_phone: string;
+    address_text: string;
+    directions: string | null;
+    timezone_snapshot: string;
+    status: string;
+    status_reason: string | null;
+    payment_status: string;
+    total_rp: number;
+    subtotal_rp: number;
+    delivery_fee_rp: number;
+    total_weight_g: number;
+    total_volume_cm3: number;
+    created_at: string;
+    window_start_at: string;
+    window_end_at: string;
+    pending_expires_at: string;
+    confirmed_at: string | null;
+    closed_at: string | null;
+    lock_version: number;
+    decision?: {
+        decision: string;
+        reason: string | null;
+        decided_at: string;
+        admin: { id: number; name: string };
+    } | null;
+    items: OrderItem[];
+};

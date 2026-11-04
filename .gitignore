@@ -1,0 +1,13 @@
+backend/.env
+backend/vendor/
+backend/node_modules/
+backend/public/build/
+backend/work/
+backend/.npm-cache/
+mobile/.dart_tool/
+mobile/build/
+mobile/.flutter-plugins-dependencies
+mobile/android/local.properties
+mobile/android/key.properties
+*.jks
+*.keystore

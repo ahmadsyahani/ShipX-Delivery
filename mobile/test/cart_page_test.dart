@@ -1,0 +1,132 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:shipx/commerce/cart_page.dart';
+import 'package:shipx/commerce/shopping_state.dart';
+import 'shopping_test.dart' show CommerceSession, MemoryPending, product;
+
+class CartSession extends CommerceSession {
+  bool stockAvailable = true;
+  @override
+  Future<Map<String, dynamic>> commerceRequest(
+    String method,
+    String path, {
+    Map<String, dynamic>? body,
+    String? key,
+    bool envelope = false,
+  }) async {
+    if (path == '/order-quotes') {
+      return {
+        'items': [
+          {'quantity': 1, 'name': 'Barang 1', 'line_total_rp': 15000},
+        ],
+        'subtotal_rp': 15000,
+        'delivery_fee_rp': 3000,
+        'total_rp': 18000,
+        'total_weight_g': 1000,
+        'total_volume_cm3': 1000,
+        'stock_available_now': stockAvailable,
+      };
+    }
+    return super.commerceRequest(
+      method,
+      path,
+      body: body,
+      key: key,
+      envelope: envelope,
+    );
+  }
+}
+
+void main() {
+  Future<ShoppingState> showCart(
+    WidgetTester tester,
+    CartSession session,
+  ) async {
+    final store = MemoryPending();
+    session.persistence = store;
+    final state = ShoppingState(session: session, store: store);
+    await state.restore();
+    state.add(product('1'));
+    state.chooseAddress({
+      'id': '1',
+      'label': 'Rumah',
+      'address_text': 'Alamat',
+    });
+    state.chooseSlot({
+      'id': '2',
+      'timezone': 'Asia/Jakarta',
+      'window_start_at': '2026-11-05T03:00:00Z',
+      'window_end_at': '2026-11-05T05:00:00Z',
+    });
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: CartPage(
+            session: session,
+            shopping: state,
+            chooseDelivery: () {},
+            browse: () {},
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Hitung total terbaru'));
+    await tester.tap(find.text('Hitung total terbaru'));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('Lanjut buat pesanan COD'), 200);
+    return state;
+  }
+
+  testWidgets(
+    'server quote requires confirmation and successful checkout clears cart',
+    (tester) async {
+      final session = CartSession();
+      final state = await showCart(tester, session);
+      expect(session.requests, isEmpty);
+      expect(find.text('Total COD Rp18.000'), findsOneWidget);
+      await tester.tap(find.text('Lanjut buat pesanan COD'));
+      await tester.pumpAndSettle();
+      expect(session.requests, isEmpty);
+      await tester.tap(find.widgetWithText(FilledButton, 'Buat pesanan'));
+      await tester.pumpAndSettle();
+      expect(state.lines, isEmpty);
+      expect(state.pending, isNull);
+      expect(session.requests.single['body']['expected_total_rp'], 18000);
+      expect(find.text('Pesanan berhasil dibuat.'), findsOneWidget);
+    },
+  );
+
+  testWidgets('changed cart during confirmation prevents stale checkout', (
+    tester,
+  ) async {
+    final session = CartSession();
+    final state = await showCart(tester, session);
+    await tester.tap(find.text('Lanjut buat pesanan COD'));
+    await tester.pumpAndSettle();
+    state.quantity('1', 2);
+    await tester.pump();
+    await tester.tap(find.widgetWithText(FilledButton, 'Buat pesanan'));
+    await tester.pumpAndSettle();
+    expect(session.requests, isEmpty);
+    expect(state.count, 2);
+    expect(
+      find.text(
+        'Isi keranjang atau jadwal berubah. Hitung ulang total sebelum memesan.',
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('insufficient server stock disables order confirmation', (
+    tester,
+  ) async {
+    final session = CartSession()..stockAvailable = false;
+    await showCart(tester, session);
+    final button = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'Lanjut buat pesanan COD'),
+    );
+    expect(button.onPressed, isNull);
+    expect(session.requests, isEmpty);
+  });
+}

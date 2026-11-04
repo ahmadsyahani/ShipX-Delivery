@@ -1,0 +1,78 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@source '../**/*.tsx';
+@source '../**/*.blade.php';
+@source '../**/*.js';
+
+@theme inline {
+    --font-sans: "Segoe UI", system-ui, sans-serif;
+    --color-background: var(--background);
+    --color-foreground: var(--foreground);
+    --color-card: var(--card);
+    --color-card-foreground: var(--foreground);
+    --color-popover: var(--card);
+    --color-popover-foreground: var(--foreground);
+    --color-primary: var(--primary);
+    --color-primary-foreground: #ffffff;
+    --color-secondary: #eaf2f0;
+    --color-secondary-foreground: #18584f;
+    --color-muted: #f1f4f5;
+    --color-muted-foreground: #647378;
+    --color-accent: #eaf2f0;
+    --color-accent-foreground: #18584f;
+    --color-destructive: #ba303b;
+    --color-destructive-foreground: #ffffff;
+    --color-border: #dfe6e7;
+    --color-input: #d2dcde;
+    --color-ring: #37897b;
+    --radius-sm: 0.375rem;
+    --radius-md: 0.5rem;
+    --radius-lg: 0.75rem;
+    --radius-xl: 1rem;
+}
+
+:root {
+    --background: #f6f8f9;
+    --foreground: #183138;
+    --card: #ffffff;
+    --primary: #11675d;
+    --radius: 0.75rem;
+}
+
+@layer base {
+    * {
+        @apply border-border outline-ring/50;
+    }
+    body {
+        @apply bg-background text-foreground;
+    }
+    button,
+    a,
+    input,
+    select,
+    textarea {
+        -webkit-tap-highlight-color: transparent;
+    }
+    button:not(:disabled),
+    [role="button"]:not(:disabled) {
+        cursor: pointer;
+    }
+    input,
+    textarea,
+    select {
+        scroll-margin-top: 6rem;
+    }
+    ::selection {
+        background: #cce8df;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+    }
+}
