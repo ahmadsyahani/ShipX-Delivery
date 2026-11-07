@@ -71,10 +71,12 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('Hitung total terbaru'));
+    await tester.scrollUntilVisible(find.text('Hitung total terbaru'), 200);
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Hitung total terbaru'));
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(find.text('Lanjut buat pesanan COD'), 200);
+    await tester.pumpAndSettle();
     return state;
   }
 

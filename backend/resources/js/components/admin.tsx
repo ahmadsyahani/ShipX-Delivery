@@ -33,8 +33,8 @@ export function PageHeading({
     back?: { href: string; label: string };
 }) {
     return (
-        <div className="flex flex-wrap items-end justify-between gap-4">
-            <div className="min-w-0 flex-1 space-y-2">
+        <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-end">
+            <div className="w-full min-w-0 flex-1 space-y-2 sm:w-auto">
                 {back && (
                     <Link
                         href={back.href}
@@ -44,7 +44,7 @@ export function PageHeading({
                         {back.label}
                     </Link>
                 )}
-                <h1 className="break-words text-2xl font-semibold tracking-tight sm:text-3xl">
+                <h1 className="text-[26px] font-bold leading-tight tracking-[-0.04em] [overflow-wrap:anywhere] sm:text-3xl">
                     {title}
                 </h1>
                 {description && (
@@ -146,13 +146,15 @@ export function FormErrors({ errors }: { errors: Record<string, string> }) {
 }
 export function SaveButton({
     processing,
+    disabled = false,
     children = "Simpan perubahan",
 }: {
     processing: boolean;
+    disabled?: boolean;
     children?: ReactNode;
 }) {
     return (
-        <Button type="submit" disabled={processing}>
+        <Button type="submit" disabled={processing || disabled}>
             {processing && <LoaderCircle className="animate-spin" />}
             {processing ? "Menyimpan…" : children}
         </Button>

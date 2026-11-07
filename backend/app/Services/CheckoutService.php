@@ -50,7 +50,7 @@ class CheckoutService
                 StockReservation::create(['order_item_id' => $row->id, 'inventory_account_id' => $prepared['accounts'][$item['product_id']]->id, 'quantity' => $item['quantity'], 'status' => 'active']);
             }
 
-            return $order->load('items');
+            return $order->refresh()->load('items');
         });
     }
 

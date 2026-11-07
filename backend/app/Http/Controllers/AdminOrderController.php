@@ -4,9 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\AdminOrderDecisionRequest;
 use App\Models\Order;
+use App\Services\DeliveryResultView;
 use App\Services\IdempotencyService;
 use App\Services\OrderLifecycleService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
 
@@ -14,7 +16,7 @@ class AdminOrderController extends Controller
 {
     public function index(Request $request, OrderLifecycleService $lifecycle)
     {
-        $data = $request->validate(['status' => ['nullable', 'in:pending,confirmed,rejected,cancelled'], 'page' => ['sometimes', 'integer', 'min:1']]);
+        $data = $request->validate(['status' => ['nullable', 'in:pending,confirmed,assigned,out_for_delivery,delivered,failed,rejected,cancelled'], 'page' => ['sometimes', 'integer', 'min:1']]);
         $lifecycle->expireAllDue();
         $orders = Order::where('depot_id', 1);
         if ($status = $data['status'] ?? null) {
@@ -29,7 +31,7 @@ class AdminOrderController extends Controller
         abort_unless((int) $order->depot_id === 1, 404);
         $lifecycle->expireAllDue();
 
-        return Inertia::render('Admin/Orders/Show', ['order' => $order->refresh()->load(['items', 'decision.admin:id,name']), 'decisionKeys' => ['confirm' => Str::uuid()->toString(), 'reject' => Str::uuid()->toString()]]);
+        return Inertia::render('Admin/Orders/Show', ['order' => $order->refresh()->load(['items', 'decision.admin:id,name']), 'deliveryResult' => app(DeliveryResultView::class)->forOrder($order->id, true), 'tripId' => DB::table('active_order_allocations')->where('order_id', $order->id)->value('trip_id'), 'decisionKeys' => ['confirm' => Str::uuid()->toString(), 'reject' => Str::uuid()->toString()]]);
     }
 
     public function confirm(AdminOrderDecisionRequest $request, Order $order, OrderLifecycleService $lifecycle, IdempotencyService $idempotency)

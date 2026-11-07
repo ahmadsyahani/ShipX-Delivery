@@ -1,4 +1,4 @@
-import { Head } from "@inertiajs/react";
+import { Head, Link } from "@inertiajs/react";
 import { Clock3, MapPin } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
@@ -18,9 +18,20 @@ import OrderDecision, { type DecisionKeys } from "@/components/order-decision";
 export default function OrderDetail({
     order,
     decisionKeys,
+    tripId,
+    deliveryResult,
 }: {
     order: Order;
     decisionKeys: DecisionKeys;
+    tripId: number | null;
+    deliveryResult: {
+        outcome: string;
+        failure_reason: string | null;
+        notes: string | null;
+        cash_received_rp: number;
+        recorded_at: string;
+        proof_url: string | null;
+    } | null;
 }) {
     return (
         <>
@@ -32,6 +43,57 @@ export default function OrderDetail({
                 action={<StatusBadge status={order.status} />}
             />
             <OrderDecision order={order} keys={decisionKeys} />
+            {deliveryResult && (
+                <Section title="Hasil pengiriman">
+                    <div className="space-y-3 text-sm">
+                        <StatusBadge status={deliveryResult.outcome} />
+                        <p>
+                            {dateTime(
+                                deliveryResult.recorded_at,
+                                order.timezone_snapshot,
+                            )}
+                        </p>
+                        <p>
+                            COD diterima{" "}
+                            {money(deliveryResult.cash_received_rp)}
+                        </p>
+                        {deliveryResult.failure_reason && (
+                            <p>{deliveryResult.failure_reason}</p>
+                        )}
+                        {deliveryResult.notes && <p>{deliveryResult.notes}</p>}
+                        {deliveryResult.proof_url && (
+                            <a
+                                href={deliveryResult.proof_url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-primary underline"
+                            >
+                                Lihat foto bukti
+                            </a>
+                        )}
+                    </div>
+                </Section>
+            )}
+            {tripId && (
+                <Section title="Penugasan">
+                    <Link
+                        className="text-sm text-primary underline"
+                        href={`/admin/trips/${tripId}`}
+                    >
+                        Lihat trip dan urutan tujuan
+                    </Link>
+                </Section>
+            )}
+            {order.status === "confirmed" && (
+                <Section title="Siap direncanakan">
+                    <Link
+                        className="text-sm text-primary underline"
+                        href="/admin/trips/create"
+                    >
+                        Buat rencana trip untuk pesanan terkonfirmasi
+                    </Link>
+                </Section>
+            )}
             {order.decision && (
                 <Section title="Keputusan admin">
                     <p className="text-sm leading-6">
@@ -89,9 +151,7 @@ export default function OrderDetail({
                                             order.timezone_snapshot,
                                         )}
                                     </p>
-                                    <p className="text-xs text-muted-foreground">
-                                        {order.timezone_snapshot}
-                                    </p>
+
                                     {order.status === "pending" && (
                                         <p className="mt-3 text-xs text-amber-800">
                                             Batas konfirmasi:{" "}
@@ -136,10 +196,7 @@ export default function OrderDetail({
                                             <p className="font-medium">
                                                 {item.product_name_snapshot}
                                             </p>
-                                            <p className="mt-1 text-xs text-muted-foreground">
-                                                {item.unit_weight_g} g ·{" "}
-                                                {item.unit_volume_cm3} cm³
-                                            </p>
+
                                             {item.handling_notes_snapshot && (
                                                 <p className="mt-1 text-xs text-muted-foreground">
                                                     {
@@ -149,8 +206,7 @@ export default function OrderDetail({
                                             )}
                                         </TableCell>
                                         <TableCell>
-                                            {item.quantity}{" "}
-                                            {item.unit_label_snapshot}
+                                            {item.quantity} item
                                         </TableCell>
                                         <TableCell className="text-right tabular-nums">
                                             {money(item.unit_price_rp)}
@@ -192,10 +248,7 @@ export default function OrderDetail({
                             ? "Belum dibayar"
                             : order.payment_status}
                     </p>
-                    <p className="mt-5 text-xs text-muted-foreground">
-                        {order.total_weight_g} gram · {order.total_volume_cm3}{" "}
-                        cm³
-                    </p>
+
                     {order.status_reason && (
                         <div className="mt-5 rounded-lg bg-muted p-3 text-xs leading-6">
                             Alasan status:{" "}

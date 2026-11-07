@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'dart:convert';
+import 'dart:io';
+import 'package:uuid/uuid.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:shipx/main.dart';
@@ -39,23 +43,90 @@ class TestPending implements PendingStore {
   }
 }
 
+// Exercise the real protected web actions against QA only. Cookies and CSRF
+// stay in memory, separately from the customer's bearer session.
+class TestAdmin {
+  final client = HttpClient();
+  final cookies = <String, Cookie>{};
+  Future<void> request(
+    String method,
+    String path, [
+    Map<String, dynamic>? body,
+  ]) async {
+    final request = await client.openUrl(
+      method,
+      Uri.parse('http://127.0.0.1:8001$path'),
+    );
+    request.followRedirects = false;
+    request.headers.set(HttpHeaders.acceptHeader, 'text/html');
+    request.cookies.addAll(cookies.values);
+    if (body != null) {
+      request.headers.contentType = ContentType.json;
+      request.headers.set(
+        'X-XSRF-TOKEN',
+        Uri.decodeComponent(cookies['XSRF-TOKEN']!.value),
+      );
+      request.write(jsonEncode(body));
+    }
+    final response = await request.close();
+    expect(response.headers.value('x-shipx-qa'), 'isolated-checkout');
+    for (final cookie in response.cookies) {
+      cookies[cookie.name] = cookie;
+    }
+    await response.drain<void>();
+    expect(response.statusCode, method == 'GET' ? 200 : 302);
+  }
+
+  Future<void> login() async {
+    await request('GET', '/admin/login');
+    await request('POST', '/admin/login', {
+      'email': 'admin-ui@example.test',
+      'password': 'ShipX-QA-Admin-2026!',
+    });
+  }
+
+  Future<void> decide(String id, String action, int version) =>
+      request('POST', '/admin/orders/$id/$action', {
+        'idempotency_key': const Uuid().v4(),
+        'lock_version': version,
+        if (action == 'reject') 'reason': 'Jadwal uji tidak dapat dilayani',
+      });
+}
+
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
   testWidgets(
-    'isolated MySQL checkout: catalog, address, slot, quote, order and cancel',
+    'isolated MySQL: checkout, admin decisions, cancel and courier login',
     (tester) async {
       const base = 'http://127.0.0.1:8001/api/v1';
       final session = AuthSession(
         api: AuthApi(baseUrl: base),
         store: TestTokens(),
       );
-      await session.authenticate({
-        'name': 'QA Customer',
-        'email': 'ui-${DateTime.now().microsecondsSinceEpoch}@example.test',
-        'phone': '080000000000',
-        'password': 'ShipX-UI-test-2026!',
-        'password_confirmation': 'ShipX-UI-test-2026!',
-      }, register: true);
+      Future<Map<String, dynamic>> api(
+        String method,
+        String path, {
+        Map<String, dynamic>? body,
+        String? key,
+        bool envelope = false,
+      }) async => (await tester.runAsync(
+        () => session.commerceRequest(
+          method,
+          path,
+          body: body,
+          key: key,
+          envelope: envelope,
+        ),
+      ))!;
+      await tester.runAsync(
+        () => session.authenticate({
+          'name': 'QA Customer',
+          'email': 'ui-${DateTime.now().microsecondsSinceEpoch}@example.test',
+          'phone': '080000000000',
+          'password': 'ShipX-UI-test-2026!',
+          'password_confirmation': 'ShipX-UI-test-2026!',
+        }, register: true),
+      );
       final pending = TestPending();
       await tester.pumpWidget(
         ShipXApp(session: session, pendingStoreFactory: (_) => pending),
@@ -87,18 +158,21 @@ void main() {
         await tester.ensureVisible(f);
         await tester.enterText(f, entry.value);
       }
-      await tester.enterText(find.byType(TextFormField).at(4), '-7.25');
-      await tester.enterText(find.byType(TextFormField).at(5), '112.75');
+      await tester.ensureVisible(find.text('Pilih pin di peta'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Pilih pin di peta'));
+      await tester.pumpAndSettle();
+      await tester.tapAt(tester.getCenter(find.byType(FlutterMap)));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Gunakan titik ini'));
+      await tester.pumpAndSettle();
       await tester.ensureVisible(find.text('Simpan alamat'));
       await tester.tap(find.text('Simpan alamat'));
       await tester.pumpAndSettle(const Duration(seconds: 1));
       await tester.tap(find.text('Pilih alamat'));
       await tester.pumpAndSettle();
-      final settings = await session.commerceRequest(
-        'GET',
-        '/delivery-settings',
-      );
-      final slots = await session.commerceRequest(
+      final settings = await api('GET', '/delivery-settings');
+      final slots = await api(
         'GET',
         '/delivery-slots?date=${settings['today']}',
         envelope: true,
@@ -128,6 +202,7 @@ void main() {
         300,
         scrollable: scrollable,
       );
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Hitung total terbaru'));
       await tester.pumpAndSettle(const Duration(seconds: 1));
       await tester.scrollUntilVisible(
@@ -136,16 +211,13 @@ void main() {
         scrollable: scrollable,
       );
       expect(find.text('Total COD Rp45.000'), findsOneWidget);
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Lanjut buat pesanan COD'));
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(FilledButton, 'Buat pesanan'));
       await tester.pumpAndSettle(const Duration(seconds: 1));
       expect(pending.value, isNull);
-      final orders = await session.commerceRequest(
-        'GET',
-        '/orders',
-        envelope: true,
-      );
+      final orders = await api('GET', '/orders', envelope: true);
       expect(orders['data'], hasLength(1));
       final order = orders['data'][0];
       expect(order['total_rp'], 45000);
@@ -155,6 +227,15 @@ void main() {
       await tester.pumpAndSettle(const Duration(seconds: 1));
       await tester.tap(find.text(order['order_number']));
       await tester.pumpAndSettle(const Duration(seconds: 1));
+      final admin = TestAdmin();
+      addTearDown(() => admin.client.close(force: true));
+      await tester.runAsync(admin.login);
+      await tester.runAsync(
+        () => admin.decide(order['id'], 'confirm', order['lock_version']),
+      );
+      await tester.tap(find.byTooltip('Perbarui status'));
+      await tester.pumpAndSettle(const Duration(seconds: 1));
+      expect(find.text('Dikonfirmasi'), findsOneWidget);
       await tester.scrollUntilVisible(
         find.text('Batalkan pesanan'),
         300,
@@ -176,22 +257,79 @@ void main() {
       );
       await tester.tap(find.widgetWithText(FilledButton, 'Batalkan pesanan'));
       await tester.pumpAndSettle(const Duration(seconds: 1));
-      final cancelled = await session.commerceRequest(
-        'GET',
-        '/orders/${order['id']}',
-      );
+      final cancelled = await api('GET', '/orders/${order['id']}');
       expect(cancelled['status'], 'cancelled');
-      final catalog = await session.commerceRequest(
-        'GET',
-        '/catalog',
-        envelope: true,
-      );
+      final catalog = await api('GET', '/catalog', envelope: true);
       for (final p in catalog['data']) {
         expect(p['available_quantity'], 5);
       }
-      await session.logout();
+      final addresses = await api('GET', '/addresses', envelope: true);
+      final rejected = await api(
+        'POST',
+        '/orders',
+        key: const Uuid().v4(),
+        body: {
+          'address_id': addresses['data'][0]['id'],
+          'delivery_slot_id': slot['id'],
+          'items': (order['items'] as List)
+              .map(
+                (item) => {
+                  'product_id': item['product_id'],
+                  'quantity': item['quantity'],
+                },
+              )
+              .toList(),
+          'expected_total_rp': 45000,
+        },
+      );
+      expect(rejected['lock_version'], 0);
+      await tester.runAsync(
+        () => admin.decide(rejected['id'], 'reject', rejected['lock_version']),
+      );
+      final navigator = tester.state<NavigatorState>(find.byType(Navigator));
+      navigator.pop();
+      await tester.pumpAndSettle(const Duration(seconds: 1));
+      await tester.tap(find.text(rejected['order_number']));
+      await tester.pumpAndSettle(const Duration(seconds: 1));
+      expect(find.text('Ditolak'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.text('Alasan penolakan: Jadwal uji tidak dapat dilayani'),
+        200,
+        scrollable: find
+            .descendant(
+              of: find.byType(OrderDetailPage),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+      expect(
+        find.text('Alasan penolakan: Jadwal uji tidak dapat dilayani'),
+        findsOneWidget,
+      );
+      expect(find.text('Batalkan pesanan'), findsNothing);
+      final restored = await api('GET', '/catalog', envelope: true);
+      for (final product in restored['data']) {
+        expect(product['available_quantity'], 5);
+      }
+      await tester.runAsync(session.logout);
+      await tester.pumpAndSettle();
+      expect(find.text('Masuk ShipX'), findsOneWidget);
+      await tester.runAsync(
+        () => session.authenticate({
+          'email': 'courier-ui@example.test',
+          'password': 'ShipX-QA-Courier-2026!',
+        }, register: false),
+      );
+      await tester.pumpAndSettle(const Duration(seconds: 1));
+      expect(session.user?.role, 'courier');
+      await tester.tap(find.text('Akun'));
+      await tester.pumpAndSettle();
+      expect(find.text('Halo, QA Kurir'), findsOneWidget);
+      expect(find.byType(CartPage), findsNothing);
+      await tester.runAsync(session.logout);
       await tester.pumpAndSettle();
       expect(find.text('Masuk ShipX'), findsOneWidget);
     },
+    timeout: const Timeout(Duration(minutes: 5)),
   );
 }

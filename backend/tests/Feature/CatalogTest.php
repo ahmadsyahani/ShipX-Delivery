@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Depot;
 use App\Models\Product;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -108,6 +109,37 @@ class CatalogTest extends TestCase
             $this->app['auth']->forgetGuards();
             $this->withToken($user->createToken('test')->plainTextToken)->getJson('/api/v1/catalog')->assertForbidden();
         }
+    }
+
+    public function test_categories_cover_the_whole_active_catalog_and_filter_before_pagination(): void
+    {
+        $this->product();
+        $soap = $this->product(['sku' => 'SOAP', 'name' => 'Sabun tangan', 'category' => 'Kebersihan']);
+        $this->product(['sku' => 'SOAP2', 'name' => 'Sabun wajah', 'category' => 'Kebersihan']);
+        $this->product(['sku' => 'HIDDEN', 'category' => 'Kategori tersembunyi', 'is_active' => false]);
+        $otherDepot = $this->product(['sku' => 'OTHER', 'category' => 'Depot lain']);
+        $depot = new Depot;
+        $depot->name = 'Depot lain';
+        $depot->save();
+        $otherDepot->depot_id = $depot->id;
+        $otherDepot->save();
+        $user = User::factory()->create();
+        $this->withToken($user->createToken('test')->plainTextToken);
+        $this->getJson('/api/v1/catalog?per_page=1')->assertOk()
+            ->assertJsonPath('categories', ['Kebersihan', 'Minuman'])
+            ->assertJsonPath('meta.total', 3);
+        $this->getJson('/api/v1/catalog?category=Kebersihan&per_page=1')->assertOk()
+            ->assertJsonPath('data.0.id', (string) $soap->id)->assertJsonPath('meta.total', 2)
+            ->assertJsonPath('categories', ['Kebersihan', 'Minuman']);
+        $this->getJson('/api/v1/catalog?category=Kebersihan&per_page=1&page=2')->assertOk()
+            ->assertJsonPath('data.0.name', 'Sabun wajah')->assertJsonPath('meta.total', 2);
+        $this->getJson('/api/v1/catalog?category=Kebersihan&q=mineral')->assertOk()->assertJsonCount(0, 'data');
+        $this->getJson('/api/v1/catalog?category=Kebersihan&q=wajah')->assertJsonCount(1, 'data');
+        $this->getJson('/api/v1/catalog?category=ber')->assertJsonCount(0, 'data');
+        $this->getJson('/api/v1/catalog?category[]=Kebersihan')->assertUnprocessable();
+        $this->getJson('/api/v1/catalog?category='.str_repeat('x', 81))->assertUnprocessable();
+        $this->getJson('/api/v1/catalog?category=Unknown')->assertJsonCount(0, 'data')
+            ->assertJsonPath('categories', ['Kebersihan', 'Minuman']);
     }
 
     public function test_product_names_are_escaped_and_filters_do_not_mix_status(): void

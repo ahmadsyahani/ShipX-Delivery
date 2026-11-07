@@ -96,7 +96,7 @@ export default function Stock({
                                             {product.name}
                                         </p>
                                         <p className="mb-2 mt-1 text-xs text-muted-foreground">
-                                            {product.sku} · {product.unit_label}
+                                            {product.sku} · item
                                         </p>
                                         <StatusBadge
                                             status={product.is_active}

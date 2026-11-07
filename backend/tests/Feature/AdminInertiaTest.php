@@ -26,6 +26,12 @@ class AdminInertiaTest extends TestCase
             '/admin/slots/create' => 'Admin/Slots/Form',
             '/admin/stock' => 'Admin/Stock/Index',
             '/admin/orders' => 'Admin/Orders/Index',
+            '/admin/trips' => 'Admin/Trips/Index',
+            '/admin/trips/create' => 'Admin/Trips/Form',
+            '/admin/couriers' => 'Admin/Couriers/Index',
+            '/admin/couriers/create' => 'Admin/Couriers/Form',
+            '/admin/vehicles' => 'Admin/Vehicles/Index',
+            '/admin/vehicles/create' => 'Admin/Vehicles/Form',
         ] as $url => $component) {
             $this->get($url)->assertOk()->assertHeader('Cache-Control', 'no-store, private')
                 ->assertInertia(fn (Assert $page) => $page->component($component)

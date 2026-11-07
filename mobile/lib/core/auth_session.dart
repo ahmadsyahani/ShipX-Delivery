@@ -45,12 +45,13 @@ class AuthSession extends ChangeNotifier {
 
   Future<Map<String, dynamic>> catalog({
     String query = '',
+    String? category,
     int page = 1,
   }) async {
     try {
       final path = Uri(
         path: '/catalog',
-        queryParameters: {'q': query, 'page': '$page'},
+        queryParameters: {'q': query, 'page': '$page', 'category': ?category},
       ).toString();
       return await api.request('GET', path, token: _token, envelope: true);
     } on ApiException catch (error) {
@@ -161,7 +162,9 @@ class AuthSession extends ChangeNotifier {
       );
     } on ApiException catch (error) {
       if (error.status == 401 ||
-          (error.status == 403 && user?.role == 'customer')) {
+          (error.status == 403 &&
+              (user?.role == 'customer' ||
+                  (user?.role == 'courier' && path.startsWith('/courier/'))))) {
         await _clear();
         notifyListeners();
       }
@@ -173,5 +176,33 @@ class AuthSession extends ChangeNotifier {
     await store.clear();
     _token = null;
     user = null;
+  }
+
+  Future<Map<String, dynamic>> uploadProof(
+    String path,
+    Uint8List bytes,
+    String key,
+  ) async {
+    try {
+      return await api.uploadProof(path, bytes, key, token: _token);
+    } on ApiException catch (error) {
+      if ([401, 403].contains(error.status)) {
+        await _clear();
+        notifyListeners();
+      }
+      rethrow;
+    }
+  }
+
+  Future<Uint8List> proofPhoto(String id) async {
+    try {
+      return await api.proofPhoto(id, token: _token);
+    } on ApiException catch (error) {
+      if ([401, 403].contains(error.status)) {
+        await _clear();
+        notifyListeners();
+      }
+      rethrow;
+    }
   }
 }

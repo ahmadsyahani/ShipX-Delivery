@@ -1,12 +1,20 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+@font-face {
+    font-family: "Plus Jakarta Sans";
+    src: url("../fonts/PlusJakartaSans-Variable.ttf") format("truetype");
+    font-style: normal;
+    font-weight: 200 800;
+    font-display: swap;
+}
+
 @source '../**/*.tsx';
 @source '../**/*.blade.php';
 @source '../**/*.js';
 
 @theme inline {
-    --font-sans: "Segoe UI", system-ui, sans-serif;
+    --font-sans: "Plus Jakarta Sans", system-ui, sans-serif;
     --color-background: var(--background);
     --color-foreground: var(--foreground);
     --color-card: var(--card);
@@ -15,28 +23,28 @@
     --color-popover-foreground: var(--foreground);
     --color-primary: var(--primary);
     --color-primary-foreground: #ffffff;
-    --color-secondary: #eaf2f0;
-    --color-secondary-foreground: #18584f;
-    --color-muted: #f1f4f5;
-    --color-muted-foreground: #647378;
-    --color-accent: #eaf2f0;
-    --color-accent-foreground: #18584f;
+    --color-secondary: #e6f4f4;
+    --color-secondary-foreground: #05555e;
+    --color-muted: #f0f4f6;
+    --color-muted-foreground: #596d7c;
+    --color-accent: #e6f4f4;
+    --color-accent-foreground: #05555e;
     --color-destructive: #ba303b;
     --color-destructive-foreground: #ffffff;
-    --color-border: #dfe6e7;
-    --color-input: #d2dcde;
-    --color-ring: #37897b;
-    --radius-sm: 0.375rem;
-    --radius-md: 0.5rem;
-    --radius-lg: 0.75rem;
-    --radius-xl: 1rem;
+    --color-border: #e0e8ed;
+    --color-input: #cddae0;
+    --color-ring: #087e8b;
+    --radius-sm: 0.5rem;
+    --radius-md: 0.625rem;
+    --radius-lg: 0.875rem;
+    --radius-xl: 1.25rem;
 }
 
 :root {
-    --background: #f6f8f9;
-    --foreground: #183138;
+    --background: #f4f7fa;
+    --foreground: #182e40;
     --card: #ffffff;
-    --primary: #11675d;
+    --primary: #087e8b;
     --radius: 0.75rem;
 }
 
@@ -45,7 +53,8 @@
         @apply border-border outline-ring/50;
     }
     body {
-        @apply bg-background text-foreground;
+        @apply bg-background font-sans text-foreground antialiased;
+        line-height: 1.6;
     }
     button,
     a,
@@ -64,7 +73,17 @@
         scroll-margin-top: 6rem;
     }
     ::selection {
-        background: #cce8df;
+        background: #c8ecec;
+    }
+}
+
+@layer components {
+    .shipx-sidebar {
+        background: #182e40;
+        color: #ffffff;
+    }
+    .shipx-sidebar nav a[aria-current="page"] {
+        box-shadow: inset 3px 0 #53c5cb;
     }
 }
 

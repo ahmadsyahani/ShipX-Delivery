@@ -5,6 +5,7 @@ import {
     NativeSelect,
     NativeSelectOption,
 } from "@/components/ui/native-select";
+import { LocationPicker } from "@/components/location-picker";
 import { Badge } from "@/components/ui/badge";
 import {
     Field,
@@ -76,7 +77,7 @@ export default function Depot({
                     <div className="space-y-6">
                         <Section
                             title="Lokasi dan cakupan"
-                            description="Gunakan koordinat lokasi depot sebenarnya. Radius dihitung dari titik ini."
+                            description="Pilih posisi depot di peta. Cakupan layanan mengikuti titik ini."
                         >
                             <div className="grid gap-5 sm:grid-cols-2">
                                 <Field
@@ -115,45 +116,33 @@ export default function Depot({
                                         }
                                     />
                                 </Field>
-                                {(
-                                    [
-                                        [
-                                            "latitude",
-                                            "Latitude (lintang)",
-                                            -90,
-                                            90,
-                                        ],
-                                        [
-                                            "longitude",
-                                            "Longitude (bujur)",
-                                            -180,
-                                            180,
-                                        ],
-                                    ] as const
-                                ).map(([key, label, min, max]) => (
-                                    <Field
-                                        key={key}
-                                        id={key}
-                                        label={label}
-                                        error={form.errors[key]}
-                                    >
-                                        <Input
-                                            id={key}
-                                            type="number"
-                                            step="0.0000001"
-                                            min={min}
-                                            max={max}
-                                            required
-                                            value={form.data[key]}
-                                            onChange={(e) =>
-                                                form.setData(
-                                                    key,
-                                                    e.target.value,
-                                                )
-                                            }
-                                        />
-                                    </Field>
-                                ))}
+                                <div className="space-y-2 sm:col-span-2">
+                                    <p className="text-sm font-semibold">
+                                        Lokasi depot
+                                    </p>
+                                    <LocationPicker
+                                        latitude={form.data.latitude}
+                                        longitude={form.data.longitude}
+                                        radius={Number(
+                                            form.data.service_radius_m,
+                                        )}
+                                        disabled={form.processing}
+                                        onChange={(latitude, longitude) =>
+                                            form.setData((previous) => ({
+                                                ...previous,
+                                                latitude: String(latitude),
+                                                longitude: String(longitude),
+                                            }))
+                                        }
+                                    />
+                                    {(form.errors.latitude ||
+                                        form.errors.longitude) && (
+                                        <p className="text-xs text-destructive">
+                                            Pilih titik depot yang valid pada
+                                            peta.
+                                        </p>
+                                    )}
+                                </div>
                                 <Field
                                     id="service_radius_m"
                                     label="Radius layanan (meter)"
@@ -198,19 +187,19 @@ export default function Depot({
                                         }
                                     >
                                         <NativeSelectOption value="Asia/Jakarta">
-                                            WIB · Jakarta
+                                            Indonesia bagian barat
                                         </NativeSelectOption>
                                         <NativeSelectOption value="Asia/Makassar">
-                                            WITA · Makassar
+                                            Indonesia bagian tengah
                                         </NativeSelectOption>
                                         <NativeSelectOption value="Asia/Jayapura">
-                                            WIT · Jayapura
+                                            Indonesia bagian timur
                                         </NativeSelectOption>
                                     </NativeSelect>
                                 </Field>
                             </div>
                             <p className="mt-5 text-xs leading-6 text-muted-foreground">
-                                Koordinat dapat disalin dari aplikasi peta.
+                                Pilih titik depot sesuai alamat pada peta.
                                 Radius memakai jarak garis lurus, bukan jarak
                                 perjalanan jalan raya.
                             </p>

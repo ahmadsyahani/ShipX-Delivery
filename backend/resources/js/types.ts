@@ -5,6 +5,25 @@ export type Shared = {
     flash: { status: string | null };
     [key: string]: unknown;
 };
+export type Courier = {
+    id: number;
+    name: string;
+    email: string;
+    phone: string | null;
+    is_active: boolean;
+    lock_version: number;
+};
+export type Vehicle = {
+    id: number;
+    code: string;
+    name: string;
+    plate_number: string;
+    travel_mode: "motorcycle" | "car";
+    max_load_weight_g: number;
+    max_load_volume_cm3: number;
+    is_active: boolean;
+    lock_version: number;
+};
 export type Paginated<T> = {
     data: T[];
     current_page: number;

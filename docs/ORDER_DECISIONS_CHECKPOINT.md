@@ -1,5 +1,7 @@
 # Konfirmasi dan penolakan pesanan — 4 November 2026
 
+Pembaruan berikutnya: [master kurir/kendaraan dan uji HP](FLEET_MASTERS_CHECKPOINT.md) sudah selesai. Uji checkout, konfirmasi/penolakan, pembatalan dan login kurir pada HP I2405 kini lolos. Keterangan HP belum diuji di bawah adalah histori checkpoint ini.
+
 Checkpoint setelah migrasi admin React/Inertia. Admin aktif sekarang dapat mengonfirmasi atau menolak pesanan pending; Flutter customer menampilkan hasil keputusan dan alasan penolakan. Penugasan kurir/kendaraan, trip, delivery, COD selesai dan rekonsiliasi tetap tahap berikutnya.
 
 ## Alur dan aturan

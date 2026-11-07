@@ -36,6 +36,29 @@ class FakeApi extends AuthApi {
 
 void main() {
   test(
+    'catalog encodes category and page without sending null category',
+    () async {
+      final api = CatalogQueryApi();
+      final session = AuthSession(api: api, store: MemoryStore());
+      await session.catalog(
+        category: 'Rumah & perawatan',
+        query: 'sabun cair',
+        page: 2,
+      );
+      expect(Uri.parse(api.path!).queryParameters, {
+        'q': 'sabun cair',
+        'category': 'Rumah & perawatan',
+        'page': '2',
+      });
+      await session.catalog();
+      expect(
+        Uri.parse(api.path!).queryParameters.containsKey('category'),
+        isFalse,
+      );
+      session.dispose();
+    },
+  );
+  test(
     'restore uses server role and clears invalid or inactive sessions',
     () async {
       final api = FakeApi();
@@ -95,4 +118,20 @@ void main() {
     expect(session.user, isNull);
     expect(store.value, isNull);
   });
+}
+
+class CatalogQueryApi extends AuthApi {
+  String? path;
+  @override
+  Future<Map<String, dynamic>> request(
+    String method,
+    String path, {
+    Map<String, dynamic>? body,
+    String? token,
+    Map<String, String>? headers,
+    bool envelope = false,
+  }) async {
+    this.path = path;
+    return {};
+  }
 }

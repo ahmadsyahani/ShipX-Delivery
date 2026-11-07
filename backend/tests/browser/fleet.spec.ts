@@ -1,0 +1,96 @@
+import { test, expect, type Page } from '@playwright/test';
+
+async function login(page: Page) {
+  const response = await page.goto('/admin/login');
+  expect(response?.headers()['x-shipx-qa']).toBe('isolated-checkout');
+  await page.getByLabel('Email', { exact: true }).fill('admin-ui@example.test');
+  await page.getByLabel('Kata sandi', { exact: true }).fill('ShipX-QA-Admin-2026!');
+  await page.getByRole('button', { name: 'Masuk', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Selamat bekerja, QA.' })).toBeVisible();
+}
+
+test('fleet admin: courier credentials, revocation, stale edits and vehicle uniqueness', async ({ page, context }) => {
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await login(page);
+  await page.getByRole('navigation', { name: 'Navigasi utama' }).getByRole('link', { name: 'Kurir', exact: true }).click();
+  await page.getByRole('link', { name: 'Tambah kurir', exact: true }).first().click();
+  const email = `fleet-${Date.now()}@example.test`;
+  await page.getByLabel('Nama kurir', { exact: true }).fill('Kurir uji browser');
+  await page.getByLabel('Email', { exact: true }).fill(email);
+  await page.getByLabel('Nomor telepon').fill('080000000000');
+  await page.getByLabel('Kata sandi', { exact: true }).fill('Fleet-QA-password-2026!');
+  await page.getByLabel('Ulangi kata sandi').fill('Fleet-QA-password-2026!');
+  await page.getByRole('button', { name: 'Simpan kurir' }).click();
+  await expect(page.getByRole('status')).toContainText('Akun kurir ditambahkan');
+  const auth = await page.request.post('/api/v1/auth/login', { data: { email, password: 'Fleet-QA-password-2026!', device_name: 'Fleet browser QA' } });
+  expect(auth.status()).toBe(200);
+  const identity = (await auth.json()).data;
+  expect(identity.user.role).toBe('courier');
+  const bearer = { Authorization: `Bearer ${identity.token}`, Accept: 'application/json' };
+  await page.getByRole('link', { name: 'Edit Kurir uji browser', exact: true }).click();
+  await expect(page).toHaveURL(/\/couriers\/\d+\/edit$/);
+  await expect(page.getByLabel('Kata sandi baru (opsional)', { exact: true })).toHaveValue('');
+  const old = await context.newPage();
+  await old.goto(page.url());
+  await expect(old.getByLabel('Nama kurir', { exact: true })).toHaveValue('Kurir uji browser');
+  await page.getByRole('switch', { name: 'Akun aktif' }).click();
+  await page.getByRole('button', { name: 'Simpan perubahan', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('Perubahan kurir disimpan');
+  expect((await page.request.get('/api/v1/me', { headers: bearer })).status()).toBe(401);
+  await old.getByLabel('Nama kurir', { exact: true }).fill('Nama dari tab lama');
+  await old.getByRole('button', { name: 'Simpan perubahan', exact: true }).click();
+  await expect(old.getByRole('heading', { name: 'Perubahan belum disimpan' })).toBeVisible();
+  await old.close();
+  await page.getByRole('link', { name: 'Edit Kurir uji browser', exact: true }).click();
+  await page.getByRole('switch', { name: 'Akun aktif' }).click();
+  await page.getByRole('button', { name: 'Simpan perubahan', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('Perubahan kurir disimpan');
+  expect((await page.request.get('/api/v1/me', { headers: bearer })).status()).toBe(401);
+  await page.screenshot({ path: 'test-results/couriers-desktop.png', fullPage: true });
+
+  await page.getByRole('navigation', { name: 'Navigasi utama' }).getByRole('link', { name: 'Kendaraan', exact: true }).click();
+  await page.getByRole('link', { name: 'Tambah kendaraan', exact: true }).first().click();
+  const code = `QA-${Date.now()}`;
+  const plate = `B${Date.now().toString().slice(-6)}QA`;
+  for (const [label, value] of Object.entries({ 'Nama kendaraan': 'Motor uji browser', 'Kode kendaraan': code, 'Pelat nomor': plate, 'Beban aman (kg)': '80', 'Panjang ruang barang (cm)': '60', 'Lebar ruang barang (cm)': '50', 'Tinggi ruang barang (cm)': '60' })) await page.getByLabel(label, { exact: true }).fill(value);
+  await page.getByRole('switch', { name: 'Kendaraan aktif' }).click();
+  const savedCapacity = page.waitForRequest(request => request.method() === 'POST' && new URL(request.url()).pathname === '/admin/vehicles');
+  await page.getByRole('button', { name: 'Simpan kendaraan', exact: true }).click();
+  const capacityBody = (await savedCapacity).postDataJSON();
+  expect(String(capacityBody.max_load_weight_g)).toBe('80000');
+  expect(String(capacityBody.max_load_volume_cm3)).toBe('180000');
+  await expect(page.getByRole('status')).toContainText('Kendaraan ditambahkan');
+  await page.getByRole('link', { name: 'Edit Motor uji browser', exact: true }).click();
+  await expect(page).toHaveURL(/\/vehicles\/\d+\/edit$/);
+  const staleVehicle = await context.newPage();
+  await staleVehicle.goto(page.url());
+  await expect(staleVehicle.getByLabel('Beban aman (kg)')).toHaveValue('80');
+  await page.getByLabel('Beban aman (kg)').fill('75');
+  await page.getByRole('button', { name: 'Simpan perubahan', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('Perubahan kendaraan disimpan');
+  await staleVehicle.getByLabel('Beban aman (kg)').fill('70');
+  await staleVehicle.getByRole('button', { name: 'Simpan perubahan', exact: true }).click();
+  await expect(staleVehicle.getByRole('heading', { name: 'Perubahan belum disimpan' })).toBeVisible();
+  await staleVehicle.close();
+  await page.screenshot({ path: 'test-results/vehicles-desktop.png', fullPage: true });
+  await page.getByRole('link', { name: 'Tambah kendaraan', exact: true }).click();
+  for (const [label, value] of Object.entries({ 'Nama kendaraan': 'Duplikat QA', 'Kode kendaraan': `${code}-DUP`, 'Pelat nomor': plate.toLowerCase(), 'Beban aman (kg)': '80', 'Panjang ruang barang (cm)': '60', 'Lebar ruang barang (cm)': '50', 'Tinggi ruang barang (cm)': '60' })) await page.getByLabel(label, { exact: true }).fill(value);
+  await page.getByRole('button', { name: 'Simpan kendaraan', exact: true }).click();
+  await expect(page.getByRole('alert')).toBeVisible();
+  await expect(page.getByLabel('Nama kendaraan', { exact: true })).toHaveValue('Duplikat QA');
+  expect(errors).toEqual([]);
+});
+
+test('fleet mobile: navigation, tables and capacity form fit narrow screens', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await login(page);
+  await page.getByRole('button', { name: 'Buka navigasi' }).click();
+  await page.getByRole('dialog').getByRole('link', { name: 'Kendaraan', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Kendaraan', exact: true })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.getByRole('link', { name: 'Tambah kendaraan', exact: true }).first().click();
+  await expect(page.getByLabel('Beban aman (kg)')).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: 'test-results/vehicle-form-mobile.png', fullPage: true });
+});

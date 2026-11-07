@@ -90,7 +90,7 @@ class CheckoutTest extends TestCase
 
     public function test_checkout_snapshots_items_and_reserves_without_changing_physical_stock(): void
     {
-        $data = $this->create()->assertCreated()->assertJsonPath('data.status', 'pending')->assertJsonPath('data.payment_status', 'unpaid')->assertJsonPath('data.total_rp', 45000)->json('data');
+        $data = $this->create()->assertCreated()->assertJsonPath('data.status', 'pending')->assertJsonPath('data.lock_version', 0)->assertJsonPath('data.payment_status', 'unpaid')->assertJsonPath('data.total_rp', 45000)->json('data');
         $this->assertIsString($data['id']);
         $this->assertStringStartsWith('SX-', $data['order_number']);
         $this->assertDatabaseCount('order_items', 2);

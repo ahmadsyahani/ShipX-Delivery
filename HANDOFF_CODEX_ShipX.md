@@ -1,5 +1,43 @@
 # Handoff ShipX untuk Codex
 
+## Lokasi perangkat dan label item — 7 November 2026
+
+Baca [LOCATION_AND_SIMPLE_LABELS_CHECKPOINT.md](docs/LOCATION_AND_SIMPLE_LABELS_CHECKPOINT.md). Pengguna memilih semua barang tampil sebagai item. Form alamat Flutter memakai GPS/peta tanpa input koordinat; geolocator14.1.2 dan izin foreground coarse/fine ditambahkan. Depot web memakai Leaflet1.9.4/pin/lokasi browser. Tidak ada pengambilan lokasi otomatis atau pelacakan background. Jadwal tidak menampilkan IANA; semua konversi zona depot tetap utuh. Ukuran teknis hilang dari layar utama, admin memakai detail kg/cm dan kapasitas kendaraan hasil ukuran ruang, lalu mengirim satuan API lama. Data bisnis, riwayat unit_label, .env dan kontrak tidak ditulis ulang. 66 tes Flutter dan analyzer lolos, build web/APK berhasil. HP sudah tidak terdeteksi saat APK siap; pemasangan GPS dan izin aktual menyusul.
+
+## Seluruh tampilan mobile — 7 November 2026
+
+APK akhir berhasil dipasang dan dibuka di HP I2405 dengan adb install -r, tanpa clear data; reverse port8000 aktif. Pengguna dapat meninjau tampilan pada aplikasi. Interaksi manual HP/kamera belum dikonfirmasi.
+
+Baca [MOBILE_PAGES_CHECKPOINT.md](docs/MOBILE_PAGES_CHECKPOINT.md). Pengiriman, Keranjang, Akun (widget baru), pesanan/detail, form alamat, kurir/muatan/hasil, login dan cek koneksi diselaraskan dengan menu. Panel/intro/judul/jumlah pembayaran bersama tersedia. Pengiriman dapat menavigasi ke keranjang setelah memilih alamat/slot. Semua aturan API, checkout, fingerprint/idempotency, polling dan retry dipertahankan. 61 tes Flutter lolos, analyzer bersih; preview 320px/1.5x, 390px dan 820px meliputi checkout/dialog, alamat dan nomor pesanan panjang. Tidak mengubah backend/web admin/.env/data bisnis.
+
+## Menu mobile kategori vertikal — 7 November 2026
+
+Verifikasi: 61 tes Flutter, analyzer bersih, 92 backend/1450 assertions. APK debug dipasang dan dijalankan di HP I2405; pemetaan USB port8000 aktif. Preview widget test tersedia. Screenshot HP dilewati karena ShipX sudah bukan aplikasi foreground; interaksi manual kategori di HP belum dikonfirmasi. .env identik.
+
+Pengguna menyetujui web admin, lalu meminta katalog mobile bergaya menu pemesanan TOMORO. Baca [MOBILE_MENU_CHECKPOINT.md](docs/MOBILE_MENU_CHECKPOINT.md). Header pencarian ringkas, rail kategori vertikal dan daftar produk bergulir terpisah, ilustrasi kemasan generik, quick-add dan bar keranjang. API katalog menambahkan categories lengkap dan filter category sebelum pagination; tidak ada migration/data bisnis/.env berubah. Font/palet sebelumnya dipakai; hero katalog navy besar telah diganti. Web admin tidak didesain ulang. USB HP menggunakan adb reverse8000 dan API_BASE_URL localhost, bukan default emulator.
+
+## Checkpoint UI web dan Flutter — 7 November 2026
+
+Baca [UI_REFRESH_CHECKPOINT.md](docs/UI_REFRESH_CHECKPOINT.md). Pengguna memilih perapian kedua UI. Plus Jakarta Sans dibundel lokal beserta OFL, tema teal/navy disatukan, dashboard/sidebar/login admin serta header/katalog/navigasi Flutter dirapikan. Heading ID panjang web, nama kendaraan/spesifikasi produk Flutter dan baris pemilih jadwal diperbaiki agar membungkus pada layar kecil. Perubahan ini hanya tampilan; checkpoint domain tetap hasil pengiriman di bawah. Tidak mengubah .env/setup/data bisnis. HP belum terdeteksi; verifikasi otomatis dan preview lokal tersedia.
+
+## Checkpoint terbaru hasil pengiriman, foto dan COD
+
+Verifikasi akhir checkpoint ini mencakup 91 tes backend / 1432 assertions, 53 tes Flutter dan 6 skenario browser. Uji race MySQL hasil lolos, migration 000009 Ran, dan 0 database QA serta 0 hasil/unggahan uji tertinggal di database bisnis. Foto server QA dibersihkan. Foto draft perangkat memakai nama unik dan cleanup sebelum submit, sementara permintaan belum pasti tetap disimpan untuk retry.
+
+Baca [DELIVERY_RESULTS_CHECKPOINT.md](docs/DELIVERY_RESULTS_CHECKPOINT.md). Migration 000009 sudah Ran. Kurir mencatat hasil sesuai urutan, delivered seluruh order dengan foto privat dan COD tepat tagihan, atau failed beralasan/COD nol. Ledger trip keluar hanya untuk delivered, failed mempertahankan muatan. Hasil/proof/COD/version atomik dan idempotent. Semua tujuan selesai menjadi awaiting_reconciliation, claims tetap ditahan. Customer/admin dapat melihat hasil dan foto sesuai akses. Foto JPEG/PNG maksimal2MiB, staging24jam dan cleanup harian tersedia. Tema UI mobile pengguna dipakai. Tes Flutter53, browser6, analyzer/TypeScript/build/APK dan race MySQL hasil lolos. APK sempat tertahan cache Gradle, build ulang berhasil. .env utuh, perubahan masih lokal develop. Selanjutnya rekonsiliasi barang/uang dan penutupan trip. Uji kamera/foto HP fisik menyusul saat perangkat tersambung. Pernyataan hasil/COD belum tersedia di checkpoint lama merupakan histori.
+
+## Checkpoint terbaru: konfirmasi muatan dan start trip — 5 November 2026
+
+Baca [TRIP_DEPARTURES_CHECKPOINT.md](docs/TRIP_DEPARTURES_CHECKPOINT.md). Pengguna memilih estimasi waktu jalan manual dengan sumber + tinjauan admin untuk tahap ini, sehingga provider belum wajib. Admin mengisi semua ruas termasuk pulang, sumber, catatan dan penanganan; sistem menghitung tunggu/jendela/layanan. Review berlaku 24 jam, terikat versi dan diulang setelah replan. Flutter kurir menghitung semua SKU dan start dengan durable idempotency. Start menghitung ulang jadwal aktual, transfer ledger depot→trip, consume reservasi, orders out_for_delivery dan trip in_progress atomik; claims tetap ditahan, cancel/reopen sesudah start ditolak. Migration 000008 sudah Ran tanpa reset/.env berubah. 85 backend/1364 assertions, 48 Flutter, 6 browser, analyzer/build/APK dan race MySQL lolos. Perubahan lokal develop belum commit/push. HP tidak terdeteksi; APK belum dipasang. Berikutnya hasil delivered/failed, bukti, COD dan rekonsiliasi; tidak ada endpoint penyelesaian trip saat ini. Status “start belum tersedia” di checkpoint sebelumnya merupakan histori.
+
+## Checkpoint terbaru: penugasan trip manual
+
+Baca [MANUAL_TRIPS_CHECKPOINT.md](docs/MANUAL_TRIPS_CHECKPOINT.md). Admin dapat membuat/edit draft dan urutan manual, menetapkan, membuka ulang dan membatalkan sebelum berangkat. Validasi kapasitas dua dimensi, confirmed satu gelombang, versi/departure/reservasi dan claims pesanan/kurir/kendaraan atomik. Courier Flutter mempunyai tab Trip/Akun dan API assigned trip sendiri. Customer assigned tidak dapat cancel; reopen mengembalikan confirmed. Stok fisik belum dipindahkan. Migration 000007 sudah Ran, `.env` utuh, perubahan masih lokal develop bersama checkpoint armada. 77 tes backend/1187 assertions, 43 tes Flutter, 5 skenario browser, analyzer, TypeScript/build, APK dan race MySQL lolos. HP tidak terdeteksi; trip belum diuji langsung. Rute manual not_evaluated/ETA null. Berikutnya muatan/start, hasil/COD/rekonsiliasi dan kelayakan perjalanan. Jangan mengulang setup atau menganggap dispatch/optimasi aktif.
+
+## Checkpoint terbaru: master kurir/kendaraan dan checkout HP lolos
+
+Baca [FLEET_MASTERS_CHECKPOINT.md](docs/FLEET_MASTERS_CHECKPOINT.md). Menu admin Kurir/Kendaraan sudah tersedia (tambah/edit/filter/aktif/nonaktif, kapasitas dan konflik versi). Migration 000006 telah Ran; perubahan lokal pada develop, belum commit/push. Kata sandi/email/nonaktif kurir mencabut token. 67 tes backend / 1002 assertions, TypeScript/build, analyzer dan empat skenario browser lolos. Uji HP I2405 terisolasi kini **lolos** dari checkout multi-SKU sampai konfirmasi, pembatalan, penolakan/alasan dan login kurir; akun/pending asli tidak disentuh. Bug respons checkout lock_version null diperbaiki menjadi 0. QA database bersih dan reverse QA dilepas. .env tetap identik. Selanjutnya trip manual; dispatch/delivery/COD/rekonsiliasi belum tersedia. Status lama uji checkout HP belum selesai sudah digantikan.
+
 ## Checkpoint terbaru: keputusan admin dan status Flutter
 
 Baca [ORDER_DECISIONS_CHECKPOINT.md](docs/ORDER_DECISIONS_CHECKPOINT.md). Admin kini dapat confirm/reject pending dengan dialog, alasan wajib untuk penolakan, lock_version dan idempotency; hanya admin web aktif + CSRF. Konfirmasi mempertahankan reservasi, penolakan menjadi rejected dan melepas sekali; deadline dicek sesudah lock. Migration order_decisions telah Ran tanpa reset/.env berubah. Flutter menampilkan status/alasan, refresh manual dan polling foreground 15 detik. 58 tes backend / 742 assertions, tes Flutter status, analyzer, build APK/Vite, dua skenario browser dan race MySQL keputusan lolos. Tidak ada QA DB tertinggal. APK belum dipasang ke HP. Selanjutnya master kurir/kendaraan dan trip manual; penugasan/delivery/COD/rekonsiliasi belum tersedia. Pernyataan admin baca-saja atau konfirmasi belum tersedia di checkpoint lama adalah histori.

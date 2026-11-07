@@ -6,6 +6,7 @@ import {
     MapPin,
     Package,
     Plus,
+    Truck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -76,31 +77,66 @@ export default function Dashboard({ depot, stats, recentOrders }: Props) {
                     </Button>
                 }
             />
-            <div className="grid gap-4 sm:grid-cols-3">
-                {cards.map(({ label, value, icon: Icon, href, hint }) => (
-                    <Link
-                        key={label}
-                        href={href}
-                        className="rounded-xl focus-visible:outline-2 focus-visible:outline-ring"
-                    >
-                        <Card className="h-full shadow-none transition-colors hover:border-primary/40">
-                            <CardContent className="pt-0">
-                                <div className="mb-5 flex items-center justify-between gap-2">
-                                    <span className="text-sm text-muted-foreground">
-                                        {label}
-                                    </span>
-                                    <Icon className="size-[18px] text-primary" />
-                                </div>
-                                <div className="text-3xl font-semibold tabular-nums tracking-tight">
-                                    {value}
-                                </div>
-                                <p className="mt-2 text-xs text-muted-foreground">
-                                    {hint}
-                                </p>
-                            </CardContent>
-                        </Card>
+            <div className="grid gap-4 md:grid-cols-3">
+                {cards.map(
+                    ({ label, value, icon: Icon, href, hint }, index) => (
+                        <Link
+                            key={label}
+                            href={href}
+                            className="rounded-xl focus-visible:outline-2 focus-visible:outline-ring"
+                        >
+                            <Card
+                                className={`h-full shadow-none transition-colors hover:border-primary/40 ${index === 0 ? "border-[#182e40] bg-[#182e40] text-white" : ""}`}
+                            >
+                                <CardContent className="pt-0">
+                                    <div className="mb-5 flex items-center justify-between gap-2">
+                                        <span
+                                            className={`text-sm ${index === 0 ? "text-white/80" : "text-muted-foreground"}`}
+                                        >
+                                            {label}
+                                        </span>
+                                        <span
+                                            className={`grid size-10 place-items-center rounded-xl ${index === 0 ? "bg-white/10 text-[#85d9dd]" : "bg-secondary text-primary"}`}
+                                        >
+                                            <Icon className="size-[18px]" />
+                                        </span>
+                                    </div>
+                                    <div className="text-4xl font-bold tabular-nums tracking-tight">
+                                        {value}
+                                    </div>
+                                    <p
+                                        className={`mt-2 text-xs ${index === 0 ? "text-white/70" : "text-muted-foreground"}`}
+                                    >
+                                        {hint}
+                                    </p>
+                                </CardContent>
+                            </Card>
+                        </Link>
+                    ),
+                )}
+            </div>
+            <div className="flex flex-col gap-4 rounded-xl border border-primary/20 bg-secondary px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+                <div className="flex items-start gap-3">
+                    <Truck className="mt-1 size-5 shrink-0 text-primary" />
+                    <div>
+                        <h2 className="text-sm font-bold">
+                            Siapkan perjalanan berikutnya
+                        </h2>
+                        <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                            {stats.confirmed} pesanan dikonfirmasi. Tinjau
+                            penugasan, muatan, dan jadwal keberangkatan.
+                        </p>
+                    </div>
+                </div>
+                <Button
+                    asChild
+                    variant="outline"
+                    className="self-start bg-card sm:self-auto"
+                >
+                    <Link href="/admin/trips">
+                        Kelola trip <ArrowRight />
                     </Link>
-                ))}
+                </Button>
             </div>
             <div className="grid gap-6 xl:grid-cols-[1fr_320px]">
                 <Card className="gap-0 overflow-hidden shadow-none">
@@ -186,7 +222,7 @@ export default function Dashboard({ depot, stats, recentOrders }: Props) {
                                 </p>
                                 <p className="mt-1 text-xs leading-5 text-muted-foreground">
                                     {depot.configured
-                                        ? `Jadwal mengikuti ${depot.timezone}.`
+                                        ? "Jadwal pengantaran sudah siap."
                                         : "Tentukan lokasi, radius, dan ongkir sebelum menerima pesanan."}
                                 </p>
                             </div>
@@ -202,7 +238,7 @@ export default function Dashboard({ depot, stats, recentOrders }: Props) {
                             </Link>
                         </Button>
                     </Section>
-                    <div className="rounded-xl border border-dashed p-5">
+                    <div className="rounded-xl bg-muted p-5">
                         <h2 className="text-sm font-semibold">
                             Sebelum menerima pesanan
                         </h2>

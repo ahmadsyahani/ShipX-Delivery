@@ -4,9 +4,11 @@ use App\Http\Controllers\AdminDashboardController;
 use App\Http\Controllers\AdminDeliverySlotController;
 use App\Http\Controllers\AdminOrderController;
 use App\Http\Controllers\AdminSessionController;
+use App\Http\Controllers\CourierController;
 use App\Http\Controllers\DepotController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\StockController;
+use App\Http\Controllers\VehicleController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -29,5 +31,11 @@ Route::middleware(['auth:web', 'active.role:admin'])->prefix('admin')->group(fun
     Route::put('depot', [DepotController::class, 'update'])->name('admin.depot.update');
     Route::resource('slots', AdminDeliverySlotController::class)->parameters(['slots' => 'slot'])->only(['index', 'create', 'store', 'edit', 'update'])->names('admin.slots');
     Route::resource('products', ProductController::class)->only(['index', 'create', 'store', 'edit', 'update'])->names('admin.products');
+    Route::resource('couriers', CourierController::class)->parameters(['couriers' => 'courier'])->only(['index', 'create', 'store', 'edit', 'update'])->names('admin.couriers');
+    Route::resource('vehicles', VehicleController::class)->only(['index', 'create', 'store', 'edit', 'update'])->names('admin.vehicles');
     Route::post('/logout', [AdminSessionController::class, 'destroy'])->name('admin.logout');
+    Route::get('delivery-proofs/{proof}', [\App\Http\Controllers\DeliveryProofController::class, 'show'])->whereNumber('proof');
+    Route::resource('trips', \App\Http\Controllers\AdminTripController::class)->only(['index', 'create', 'store', 'show', 'edit', 'update'])->names('admin.trips');
+    Route::post('trips/{trip}/{action}', [\App\Http\Controllers\AdminTripController::class, 'action'])->where('action', 'assign|reopen|cancel')->name('admin.trips.action');
+    Route::post('trips/{trip}/departure-review', [\App\Http\Controllers\AdminTripController::class, 'review'])->name('admin.trips.review');
 });

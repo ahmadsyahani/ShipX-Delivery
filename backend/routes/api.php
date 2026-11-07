@@ -25,6 +25,14 @@ Route::prefix('v1')->group(function (): void {
             Route::apiResource('addresses', AddressController::class)->only(['index', 'store', 'update', 'destroy']);
         });
         Route::get('/me', fn (Request $request) => new UserResource($request->user()));
+        Route::get('/delivery-proofs/{proof}', [\App\Http\Controllers\DeliveryProofController::class, 'show'])->whereNumber('proof');
+        Route::middleware('active.role:courier')->prefix('courier')->group(function (): void {
+            Route::get('trips', [\App\Http\Controllers\CourierTripController::class, 'index']);
+            Route::get('trips/{id}', [\App\Http\Controllers\CourierTripController::class, 'show'])->whereNumber('id');
+            Route::post('trips/{id}/start', [\App\Http\Controllers\CourierTripController::class, 'start'])->whereNumber('id');
+            Route::post('trips/{id}/stops/{stop}/proofs', [\App\Http\Controllers\DeliveryProofController::class, 'store'])->whereNumber(['id', 'stop']);
+            Route::post('trips/{id}/stops/{stop}/result', [\App\Http\Controllers\DeliveryResultController::class, 'store'])->whereNumber(['id', 'stop']);
+        });
         Route::delete('/auth/token', [AuthController::class, 'logout']);
     });
     Route::get('/health', fn () => response()->json([

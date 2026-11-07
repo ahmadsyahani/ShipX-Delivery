@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import '../core/app_theme.dart';
+import '../core/app_widgets.dart';
 import '../core/auth_session.dart';
 import '../catalog_page.dart' show rupiah;
 import '../delivery/delivery_page.dart' show slotDate, slotTime;
 import 'shopping_state.dart';
 import 'order_refresh.dart';
+import '../courier/delivery_result_view.dart';
 
 String orderStatus(String value) => switch (value) {
   'pending' => 'Menunggu konfirmasi',
@@ -94,7 +97,7 @@ class _OrdersPageState extends State<OrdersPage> with OrderRefresh<OrdersPage> {
         IconButton(
           tooltip: 'Perbarui status',
           onPressed: _fetching ? null : () => _load(),
-          icon: const Icon(Icons.refresh),
+          icon: const Icon(Icons.refresh_rounded),
         ),
       ],
     ),
@@ -102,32 +105,65 @@ class _OrdersPageState extends State<OrdersPage> with OrderRefresh<OrdersPage> {
       onRefresh: () => _load(),
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(22),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
         children: [
+          const AppPageIntro(
+            title: 'Setiap pesanan, jelas.',
+            description:
+                'Pantau proses pengiriman dan lihat riwayat belanjamu.',
+          ),
           if (_busy)
-            const Center(child: CircularProgressIndicator())
-          else if (_error != null) ...[
-            Text(_error!),
-            TextButton(
-              onPressed: () => _load(),
-              child: const Text('Coba lagi'),
+            const Padding(
+              padding: EdgeInsets.all(32),
+              child: Center(child: CircularProgressIndicator()),
             ),
-          ],
-          if (!_busy && _orders.isEmpty && _error == null)
-            const Text(
-              'Belum ada pesanan. Pesanan yang berhasil dibuat akan tampil di sini.',
-            ),
-          if (!_busy)
-            for (final order in _orders)
-              Card(
-                color: Colors.white,
-                child: ListTile(
-                  title: Text(order['order_number']),
-                  subtitle: Text(
-                    '${orderStatus(order['status'])}\n${rupiah(order['total_rp'])} · COD tunai',
+          if (_error != null)
+            AppPanel(
+              child: Column(
+                children: [
+                  InfoBanner(message: _error!),
+                  TextButton(
+                    onPressed: () => _load(),
+                    child: const Text('Coba lagi'),
                   ),
-                  isThreeLine: true,
-                  trailing: const Icon(Icons.chevron_right),
+                ],
+              ),
+            ),
+          if (!_busy && _orders.isEmpty && _error == null)
+            const AppPanel(
+              child: Column(
+                children: [
+                  Icon(
+                    Icons.receipt_long_outlined,
+                    size: 44,
+                    color: AppColors.primary,
+                  ),
+                  SizedBox(height: 18),
+                  Text(
+                    'Belum ada pesanan',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    'Pesanan yang berhasil dibuat akan tampil di sini.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: AppColors.textMuted,
+                      height: 1.6,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          for (final order in _orders)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Material(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(20),
                   onTap: () async {
                     await Navigator.push(
                       context,
@@ -141,10 +177,76 @@ class _OrdersPageState extends State<OrdersPage> with OrderRefresh<OrdersPage> {
                     );
                     if (mounted) _load();
                   },
+                  child: Padding(
+                    padding: const EdgeInsets.all(18),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: StatusBadge(
+                            status: order['status'],
+                            text: orderStatus(order['status']),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          order['order_number'],
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            height: 1.6,
+                          ),
+                        ),
+                        const Divider(height: 26),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'Total pesanan',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: AppColors.textMuted,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    rupiah(order['total_rp']),
+                                    style: const TextStyle(
+                                      fontSize: 19,
+                                      fontWeight: FontWeight.w800,
+                                      color: AppColors.primaryDark,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const Icon(
+                              Icons.arrow_forward_rounded,
+                              size: 20,
+                              color: AppColors.primary,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        const Text(
+                          'COD tunai',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: AppColors.textMuted,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
+            ),
           if (!_busy && _page < _last)
-            TextButton(
+            OutlinedButton(
               onPressed: _more ? null : () => _load(next: true),
               child: Text(_more ? 'Memuat...' : 'Muat pesanan lainnya'),
             ),
@@ -189,7 +291,12 @@ class _OrderDetailPageState extends State<OrderDetailPage>
       if (!widget.shopping.busy &&
           widget.shopping.pending == null &&
           (_order == null ||
-              ['pending', 'confirmed'].contains(_order!['status']))) {
+              [
+                'pending',
+                'confirmed',
+                'assigned',
+                'out_for_delivery',
+              ].contains(_order!['status']))) {
         await _load(background: true);
       }
     });
@@ -225,6 +332,7 @@ class _OrderDetailPageState extends State<OrderDetailPage>
     final reason = await showDialog<String>(
       context: context,
       builder: (c) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text('Batalkan pesanan?'),
         content: TextField(
           controller: controller,
@@ -237,6 +345,7 @@ class _OrderDetailPageState extends State<OrderDetailPage>
             child: const Text('Kembali'),
           ),
           FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.error),
             onPressed: () {
               if (controller.text.trim().isNotEmpty) {
                 Navigator.pop(c, controller.text.trim());
@@ -270,7 +379,7 @@ class _OrderDetailPageState extends State<OrderDetailPage>
           IconButton(
             tooltip: 'Perbarui status',
             onPressed: _fetching ? null : () => _load(),
-            icon: const Icon(Icons.refresh),
+            icon: const Icon(Icons.refresh_rounded),
           ),
         ],
       ),
@@ -280,85 +389,237 @@ class _OrderDetailPageState extends State<OrderDetailPage>
               onRefresh: () => _load(),
               child: ListView(
                 physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.all(22),
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
                 children: [
                   if (_error != null) ...[
-                    Text(_error!, style: const TextStyle(color: Colors.red)),
+                    InfoBanner(
+                      message: _error!,
+                      color: AppColors.error,
+                      backgroundColor: AppColors.errorBg,
+                    ),
                     TextButton(
                       onPressed: _load,
                       child: const Text('Muat ulang'),
                     ),
                   ],
                   if (_order != null) ...[
-                    Text(
-                      _order!['order_number'],
-                      style: Theme.of(context).textTheme.titleLarge,
+                    AppPanel(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          StatusBadge(
+                            status: _order!['status'],
+                            text: orderStatus(_order!['status']),
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            _order!['order_number'],
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w800,
+                              height: 1.6,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            switch (_order!['status']) {
+                              'out_for_delivery' =>
+                                'Kurir sudah berangkat membawa pesanan Anda. Pembatalan tidak tersedia.',
+                              'assigned' =>
+                                'Pesanan sudah masuk penugasan trip. Pembatalan perlu ditinjau admin sebelum keberangkatan.',
+                              'confirmed' =>
+                                'Pesanan diterima admin. Pengantaran sedang disiapkan.',
+                              'rejected' =>
+                                'Pesanan ditolak admin. Tidak ada pembayaran yang perlu dilakukan.',
+                              'delivered' =>
+                                'Pesanan sudah diserahkan. Terima kasih telah berbelanja.',
+                              'failed' =>
+                                'Pesanan belum berhasil diantar. Lihat hasil pengiriman di bawah.',
+                              'cancelled' => 'Pesanan telah dibatalkan.',
+                              _ => 'Pesanan menunggu konfirmasi admin.',
+                            },
+                            style: const TextStyle(
+                              fontSize: 13,
+                              height: 1.7,
+                              color: AppColors.textBody,
+                            ),
+                          ),
+                          if (_order!['confirmed_at'] != null)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 10),
+                              child: Text(
+                                'Dikonfirmasi ${slotDate(_order!['confirmed_at'], _order!['timezone'])} ${slotTime(_order!['confirmed_at'], _order!['timezone'])}.',
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  color: AppColors.textMuted,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
-                    Text(orderStatus(_order!['status'])),
-                    if (_order!['status'] == 'confirmed')
-                      const Text(
-                        'Pesanan diterima admin. Pengantaran sedang disiapkan.',
-                      ),
-                    if (_order!['confirmed_at'] != null)
-                      Text(
-                        'Dikonfirmasi ${slotDate(_order!['confirmed_at'], _order!['timezone'])} ${slotTime(_order!['confirmed_at'], _order!['timezone'])}.',
-                      ),
-                    if (_order!['status'] == 'rejected')
-                      const Text(
-                        'Pesanan ditolak admin. Tidak ada pembayaran yang perlu dilakukan.',
-                      ),
                     const SizedBox(height: 16),
-                    Text(
-                      '${_order!['address']['recipient_name']} · ${_order!['address']['phone']}',
+                    AppPanel(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          const AppSectionTitle(
+                            title: 'Tujuan pengantaran',
+                            icon: Icons.location_on_outlined,
+                          ),
+                          Text(
+                            _order!['address']['recipient_name'],
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 5),
+                          Text(
+                            _order!['address']['phone'],
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: AppColors.textMuted,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            _order!['address']['address_text'],
+                            style: const TextStyle(fontSize: 13, height: 1.6),
+                          ),
+                          const Divider(height: 28),
+                          const AppSectionTitle(
+                            title: 'Jadwal pengiriman',
+                            icon: Icons.schedule_rounded,
+                          ),
+                          Text(
+                            '${slotDate(_order!['window_start_at'], _order!['timezone'])} ${slotTime(_order!['window_start_at'], _order!['timezone'])}-${slotTime(_order!['window_end_at'], _order!['timezone'])}',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              height: 1.6,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                    Text(_order!['address']['address_text']),
-                    Text(
-                      '${slotDate(_order!['window_start_at'], _order!['timezone'])} ${slotTime(_order!['window_start_at'], _order!['timezone'])}–${slotTime(_order!['window_end_at'], _order!['timezone'])}',
+                    const SizedBox(height: 16),
+                    AppPanel(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          const AppSectionTitle(
+                            title: 'Rincian pesanan',
+                            icon: Icons.receipt_long_outlined,
+                          ),
+                          for (final item in _order!['items'])
+                            Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 6),
+                              child: Text(
+                                '${item['quantity']} item ${item['name']} - ${rupiah(item['line_total_rp'])}',
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  height: 1.6,
+                                ),
+                              ),
+                            ),
+                          const Divider(height: 24),
+                          AppAmountLine(
+                            label: 'Ongkos kirim',
+                            value:
+                                'Ongkir ${rupiah(_order!['delivery_fee_rp'])}',
+                          ),
+                          const SizedBox(height: 12),
+                          const Text(
+                            'Pembayaran COD',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: AppColors.textMuted,
+                            ),
+                          ),
+                          const SizedBox(height: 5),
+                          Text(
+                            'Total COD ${rupiah(_order!['total_rp'])}',
+                            style: const TextStyle(
+                              fontSize: 23,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.primaryDark,
+                            ),
+                          ),
+                          if (_order!['status'] == 'pending')
+                            Padding(
+                              padding: const EdgeInsets.only(top: 14),
+                              child: Text(
+                                'Batas konfirmasi ${slotDate(_order!['pending_expires_at'], _order!['timezone'])} ${slotTime(_order!['pending_expires_at'], _order!['timezone'])}. Stok dilepas jika batas konfirmasi habis.',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  height: 1.6,
+                                  color: AppColors.warning,
+                                ),
+                              ),
+                            ),
+                          if (_order!['status_reason'] != null)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 14),
+                              child: InfoBanner(
+                                message:
+                                    _order!['status_reason'] ==
+                                        'PENDING_EXPIRED'
+                                    ? 'Batas konfirmasi habis.'
+                                    : _order!['status'] == 'rejected'
+                                    ? 'Alasan penolakan: ${_order!['status_reason']}'
+                                    : _order!['status_reason'],
+                                color: AppColors.error,
+                                backgroundColor: AppColors.errorBg,
+                              ),
+                            ),
+                          if ([
+                            'pending',
+                            'confirmed',
+                          ].contains(_order!['status'])) ...[
+                            const SizedBox(height: 20),
+                            OutlinedButton(
+                              onPressed: widget.shopping.locked
+                                  ? null
+                                  : _cancel,
+                              child: const Text('Batalkan pesanan'),
+                            ),
+                          ],
+                        ],
+                      ),
                     ),
-                    const Divider(height: 32),
-                    for (final item in _order!['items'])
+                    if (_order!['delivery_result'] != null)
                       Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        child: Text(
-                          '${item['quantity']} ${item['unit_label']} ${item['name']} · ${rupiah(item['line_total_rp'])}',
+                        padding: const EdgeInsets.only(top: 16),
+                        child: DeliveryResultView(
+                          session: widget.session,
+                          result: _order!['delivery_result'],
                         ),
-                      ),
-                    Text('Ongkir ${rupiah(_order!['delivery_fee_rp'])}'),
-                    Text(
-                      'Total COD ${rupiah(_order!['total_rp'])}',
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
-                    if (_order!['status'] == 'pending')
-                      Text(
-                        'Batas konfirmasi ${slotDate(_order!['pending_expires_at'], _order!['timezone'])} ${slotTime(_order!['pending_expires_at'], _order!['timezone'])}. Stok dilepas jika batas konfirmasi habis.',
-                      ),
-                    if (_order!['status_reason'] != null)
-                      Text(
-                        _order!['status_reason'] == 'PENDING_EXPIRED'
-                            ? 'Batas konfirmasi habis.'
-                            : _order!['status'] == 'rejected'
-                            ? 'Alasan penolakan: ${_order!['status_reason']}'
-                            : _order!['status_reason'],
-                      ),
-                    const SizedBox(height: 24),
-                    if (['pending', 'confirmed'].contains(_order!['status']))
-                      OutlinedButton(
-                        onPressed: widget.shopping.locked ? null : _cancel,
-                        child: const Text('Batalkan pesanan'),
                       ),
                   ],
                   if (widget.shopping.pending != null) ...[
-                    const Text(
-                      'Ada permintaan yang hasilnya belum pasti. Periksa dengan permintaan yang sama.',
-                    ),
-                    FilledButton(
-                      onPressed: widget.shopping.busy
-                          ? null
-                          : () async {
-                              await widget.shopping.retry();
-                              if (mounted) await _load();
-                            },
-                      child: const Text('Periksa hasil permintaan'),
+                    const SizedBox(height: 16),
+                    AppPanel(
+                      color: AppColors.warningBg,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          const Text(
+                            'Ada permintaan yang hasilnya belum pasti. Periksa dengan permintaan yang sama.',
+                            style: TextStyle(fontSize: 13, height: 1.6),
+                          ),
+                          const SizedBox(height: 12),
+                          FilledButton(
+                            onPressed: widget.shopping.busy
+                                ? null
+                                : () async {
+                                    await widget.shopping.retry();
+                                    if (mounted) await _load();
+                                  },
+                            child: const Text('Periksa hasil permintaan'),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ],

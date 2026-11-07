@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../core/app_theme.dart';
+import '../core/app_widgets.dart';
 import '../core/auth_api.dart';
+import '../core/device_location.dart';
 import '../core/auth_session.dart';
 
 class AddressFormPage extends StatefulWidget {
@@ -11,8 +14,10 @@ class AddressFormPage extends StatefulWidget {
     required this.session,
     required this.depot,
     this.address,
+    this.location = const DeviceLocation(),
   });
   final AuthSession session;
+  final DeviceLocation location;
   final Map<String, dynamic> depot;
   final Map<String, dynamic>? address;
   @override
@@ -23,7 +28,7 @@ class _AddressFormPageState extends State<AddressFormPage> {
   final _form = GlobalKey<FormState>();
   final _values = <String, String>{};
   late final TextEditingController _lat, _lng;
-  bool _busy = false, _stale = false;
+  bool _busy = false, _stale = false, _locating = false;
   String? _error;
   @override
   void initState() {
@@ -43,7 +48,31 @@ class _AddressFormPageState extends State<AddressFormPage> {
     super.dispose();
   }
 
-  Future<void> _pin() async {
+  Future<void> _pin({bool useDevice = false}) async {
+    LatLng? devicePoint;
+    if (useDevice) {
+      setState(() {
+        _locating = true;
+        _error = null;
+      });
+      try {
+        devicePoint = await widget.location.locate();
+      } on LocationFailure catch (error) {
+        if (mounted) setState(() => _error = error.message);
+        return;
+      } catch (_) {
+        if (mounted) {
+          setState(
+            () => _error =
+                'Lokasi belum dapat dibaca. Coba lagi atau pilih pin di peta.',
+          );
+        }
+        return;
+      } finally {
+        if (mounted) setState(() => _locating = false);
+      }
+      if (!mounted) return;
+    }
     final lat = double.tryParse(_lat.text.replaceAll(',', '.')),
         lng = double.tryParse(_lng.text.replaceAll(',', '.'));
     final valid =
@@ -58,7 +87,8 @@ class _AddressFormPageState extends State<AddressFormPage> {
       MaterialPageRoute(
         builder: (_) => PinPicker(
           depot: widget.depot,
-          initial: valid ? LatLng(lat, lng) : null,
+          initial: devicePoint ?? (valid ? LatLng(lat, lng) : null),
+          location: widget.location,
         ),
       ),
     );
@@ -72,8 +102,18 @@ class _AddressFormPageState extends State<AddressFormPage> {
 
   Future<void> _save() async {
     if (!_form.currentState!.validate()) {
+      setState(() => _error = 'Lengkapi isian wajib terlebih dahulu.');
+      return;
+    }
+    final lat = double.tryParse(_lat.text), lng = double.tryParse(_lng.text);
+    if (lat == null ||
+        lng == null ||
+        !lat.isFinite ||
+        !lng.isFinite ||
+        lat.abs() > 90 ||
+        lng.abs() > 180) {
       setState(
-        () => _error = 'Lengkapi isian wajib dan periksa koordinat alamat.',
+        () => _error = 'Pilih titik pengantaran di peta terlebih dahulu.',
       );
       return;
     }
@@ -121,6 +161,7 @@ class _AddressFormPageState extends State<AddressFormPage> {
     int max, {
     bool optional = false,
     int lines = 1,
+    IconData? icon,
   }) => Padding(
     padding: const EdgeInsets.only(bottom: 16),
     child: TextFormField(
@@ -130,32 +171,20 @@ class _AddressFormPageState extends State<AddressFormPage> {
       maxLength: max,
       maxLines: lines,
       keyboardType: key == 'phone' ? TextInputType.phone : TextInputType.text,
-      decoration: InputDecoration(labelText: label, counterText: ''),
+      decoration: InputDecoration(
+        labelText: label,
+        counterText: '',
+        prefixIcon: icon != null
+            ? Icon(icon, size: 20, color: AppColors.textMuted)
+            : null,
+      ),
       validator: (value) => !optional && (value == null || value.trim().isEmpty)
           ? '$label wajib diisi.'
           : null,
       onSaved: (value) => _values[key] = value?.trim() ?? '',
     ),
   );
-  Widget _coordinate(
-    TextEditingController controller,
-    String label,
-    double bound,
-  ) => TextFormField(
-    controller: controller,
-    enabled: !_busy,
-    keyboardType: const TextInputType.numberWithOptions(
-      decimal: true,
-      signed: true,
-    ),
-    decoration: InputDecoration(labelText: label),
-    validator: (value) {
-      final v = double.tryParse((value ?? '').replaceAll(',', '.'));
-      return v == null || !v.isFinite || v.abs() > bound
-          ? 'Isi $label yang valid.'
-          : null;
-    },
-  );
+
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
@@ -164,58 +193,151 @@ class _AddressFormPageState extends State<AddressFormPage> {
     body: Form(
       key: _form,
       child: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-              'Ke mana barang diantar?',
-              style: Theme.of(context).textTheme.headlineSmall,
+            const AppPageIntro(
+              title: 'Ke mana barang diantar?',
+              description:
+                  'Lengkapi penerima dan alamat, lalu pastikan titik lokasinya.',
             ),
-            const SizedBox(height: 8),
-            const Text(
-              'Isi penerima, alamat lengkap, dan titik lokasi yang tepat.',
-            ),
-            const SizedBox(height: 24),
-            _field('label', 'Label alamat', 80),
-            _field('recipient_name', 'Nama penerima', 160),
-            _field('phone', 'Nomor telepon', 30),
-            _field('address_text', 'Alamat lengkap', 2000, lines: 3),
-            OutlinedButton.icon(
-              onPressed: _busy ? null : _pin,
-              icon: const Icon(Icons.pin_drop_outlined),
-              label: const Text('Pilih pin di peta'),
-            ),
-            const SizedBox(height: 16),
-            _coordinate(_lat, 'Latitude', 90),
-            const SizedBox(height: 16),
-            _coordinate(_lng, 'Longitude', 180),
-            const SizedBox(height: 12),
-            Text(
-              'Radius layanan: ${widget.depot['service_radius_m']} meter dari ${widget.depot['name']}. Titik harus berada dalam wilayah layanan.',
-              style: const TextStyle(color: Color(0xFF657B83)),
-            ),
-            const SizedBox(height: 20),
-            _field(
-              'directions',
-              'Petunjuk tambahan (opsional)',
-              1000,
-              optional: true,
-              lines: 2,
-            ),
-            if (_error != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 16),
-                child: Text(_error!, style: const TextStyle(color: Colors.red)),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const AppSectionTitle(
+                      title: 'Alamat penerima',
+                      icon: Icons.person_pin_circle_outlined,
+                    ),
+                    _field(
+                      'label',
+                      'Label alamat',
+                      80,
+                      icon: Icons.bookmark_border_rounded,
+                    ),
+                    _field(
+                      'recipient_name',
+                      'Nama penerima',
+                      160,
+                      icon: Icons.person_outline,
+                    ),
+                    _field(
+                      'phone',
+                      'Nomor telepon',
+                      30,
+                      icon: Icons.phone_outlined,
+                    ),
+                    _field(
+                      'address_text',
+                      'Alamat lengkap',
+                      2000,
+                      lines: 3,
+                      icon: Icons.home_outlined,
+                    ),
+                    const Divider(height: 24),
+                    const AppSectionTitle(
+                      title: 'Titik pengantaran',
+                      icon: Icons.map_outlined,
+                      subtitle: 'Gunakan lokasi perangkat atau pilih di peta',
+                    ),
+                    FilledButton.icon(
+                      onPressed: _busy || _locating
+                          ? null
+                          : () => _pin(useDevice: true),
+                      icon: const Icon(Icons.my_location_rounded),
+                      label: Text(
+                        _locating ? 'Mencari lokasi...' : 'Gunakan lokasi saya',
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    OutlinedButton.icon(
+                      onPressed: _busy || _locating ? null : () => _pin(),
+                      icon: const Icon(Icons.pin_drop_outlined),
+                      label: const Text('Pilih pin di peta'),
+                    ),
+                    if (_lat.text.isNotEmpty && _lng.text.isNotEmpty)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 12),
+                        child: InfoBanner(
+                          message:
+                              'Titik pengantaran sudah dipilih. Pastikan pin sesuai alamat penerima.',
+                        ),
+                      ),
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppColors.background,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: AppColors.border),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Icon(
+                            Icons.info_outline,
+                            size: 16,
+                            color: AppColors.primary,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Radius layanan: ${widget.depot['service_radius_m']} meter dari ${widget.depot['name']}. Titik harus berada dalam wilayah layanan.',
+                              style: const TextStyle(
+                                color: Color(0xFF657B83),
+                                fontSize: 12,
+                                height: 1.35,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    _field(
+                      'directions',
+                      'Petunjuk lokasi',
+                      1000,
+                      optional: true,
+                      lines: 2,
+                      icon: Icons.directions_outlined,
+                    ),
+                    if (_error != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 16),
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: AppColors.errorBg,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(
+                            _error!,
+                            style: const TextStyle(
+                              color: Colors.red,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                      ),
+                    if (_stale)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: TextButton(
+                          onPressed: () => Navigator.pop(context, true),
+                          child: const Text('Kembali dan muat ulang'),
+                        ),
+                      ),
+                    FilledButton(
+                      onPressed: _busy || _locating ? null : _save,
+                      child: Text(_busy ? 'Menyimpan...' : 'Simpan alamat'),
+                    ),
+                  ],
+                ),
               ),
-            if (_stale)
-              TextButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text('Kembali dan muat ulang'),
-              ),
-            FilledButton(
-              onPressed: _busy ? null : _save,
-              child: Text(_busy ? 'Menyimpan...' : 'Simpan alamat'),
             ),
           ],
         ),
@@ -225,7 +347,13 @@ class _AddressFormPageState extends State<AddressFormPage> {
 }
 
 class PinPicker extends StatefulWidget {
-  const PinPicker({super.key, required this.depot, this.initial});
+  final DeviceLocation location;
+  const PinPicker({
+    super.key,
+    required this.depot,
+    this.initial,
+    this.location = const DeviceLocation(),
+  });
   final Map<String, dynamic> depot;
   final LatLng? initial;
   @override
@@ -235,6 +363,10 @@ class PinPicker extends StatefulWidget {
 class _PinPickerState extends State<PinPicker> {
   late LatLng _center;
   LatLng? _pin;
+  final _map = MapController();
+  bool _locating = false;
+  String? _locationError;
+  int _locationGeneration = 0;
   @override
   void initState() {
     super.initState();
@@ -245,29 +377,101 @@ class _PinPickerState extends State<PinPicker> {
     _pin = widget.initial;
   }
 
+  @override
+  void dispose() {
+    _map.dispose();
+    super.dispose();
+  }
+
+  Future<void> _useDeviceLocation() async {
+    final generation = ++_locationGeneration;
+    setState(() {
+      _locating = true;
+      _locationError = null;
+    });
+    try {
+      final point = await widget.location.locate();
+      if (!mounted || generation != _locationGeneration) return;
+      setState(() => _pin = point);
+      _map.move(point, 16);
+    } on LocationFailure catch (error) {
+      if (mounted && generation == _locationGeneration) {
+        setState(() => _locationError = error.message);
+      }
+    } catch (_) {
+      if (mounted && generation == _locationGeneration) {
+        setState(
+          () => _locationError =
+              'Lokasi belum terbaca. Ketuk peta untuk memilih titik.',
+        );
+      }
+    } finally {
+      if (mounted && generation == _locationGeneration) {
+        setState(() => _locating = false);
+      }
+    }
+  }
+
   bool get _inside =>
       _pin != null &&
       const Distance().as(LengthUnit.Meter, _center, _pin!) <=
           (widget.depot['service_radius_m'] as num);
+
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Pilih titik pengantaran')),
+    appBar: AppBar(
+      title: const Text('Pilih titik pengantaran'),
+      actions: [
+        IconButton(
+          tooltip: 'Gunakan lokasi saya',
+          onPressed: _locating ? null : _useDeviceLocation,
+          icon: const Icon(Icons.my_location_rounded),
+        ),
+      ],
+    ),
     body: Column(
       children: [
-        const Padding(
-          padding: EdgeInsets.all(16),
-          child: Text(
-            'Ketuk peta untuk menaruh pin. Lingkaran menunjukkan wilayah layanan.',
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          color: AppColors.primaryLight,
+          child: Row(
+            children: const [
+              Icon(
+                Icons.touch_app_outlined,
+                size: 18,
+                color: AppColors.primary,
+              ),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Ketuk peta untuk menaruh pin. Lingkaran menunjukkan wilayah layanan.',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.primaryDark,
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
         Expanded(
           child: FlutterMap(
+            mapController: _map,
             options: MapOptions(
               initialCenter: _pin ?? _center,
               initialZoom: 14,
               minZoom: 3,
               maxZoom: 19,
-              onTap: (_, point) => setState(() => _pin = point),
+              onTap: (_, point) {
+                _locationGeneration++;
+                setState(() {
+                  _pin = point;
+                  _locating = false;
+                  _locationError = null;
+                });
+              },
             ),
             children: [
               TileLayer(
@@ -288,7 +492,7 @@ class _PinPickerState extends State<PinPicker> {
                     useRadiusInMeter: true,
                     color: const Color(0x18087E8B),
                     borderColor: const Color(0xFF087E8B),
-                    borderStrokeWidth: 1,
+                    borderStrokeWidth: 1.5,
                   ),
                 ],
               ),
@@ -296,9 +500,24 @@ class _PinPickerState extends State<PinPicker> {
                 markers: [
                   Marker(
                     point: _center,
-                    child: const Icon(
-                      Icons.warehouse,
-                      color: Color(0xFF087E8B),
+                    child: Container(
+                      decoration: const BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black26,
+                            blurRadius: 6,
+                            offset: Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      padding: const EdgeInsets.all(4),
+                      child: const Icon(
+                        Icons.warehouse,
+                        color: Color(0xFF087E8B),
+                        size: 22,
+                      ),
                     ),
                   ),
                   if (_pin != null)
@@ -318,33 +537,84 @@ class _PinPickerState extends State<PinPicker> {
             ],
           ),
         ),
-        TextButton(
-          onPressed: () => launchUrl(
-            Uri.parse('https://www.openstreetmap.org/copyright'),
-            mode: LaunchMode.externalApplication,
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            border: Border(top: BorderSide(color: AppColors.border)),
           ),
-          child: const Text('© OpenStreetMap contributors'),
-        ),
-        if (_pin != null)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Text(
-              _inside
-                  ? '${_pin!.latitude.toStringAsFixed(7)}, ${_pin!.longitude.toStringAsFixed(7)}'
-                  : 'Titik berada di luar wilayah layanan. Pilih titik lain.',
-            ),
-          ),
-        SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                onPressed: _inside ? () => Navigator.pop(context, _pin) : null,
-                child: const Text('Gunakan titik ini'),
+          child: Column(
+            children: [
+              if (_locationError != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: InfoBanner(
+                    message: _locationError!,
+                    color: AppColors.error,
+                    backgroundColor: AppColors.errorBg,
+                  ),
+                ),
+              if (_pin != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: _inside ? AppColors.successBg : AppColors.errorBg,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          _inside
+                              ? Icons.check_circle_outline
+                              : Icons.error_outline,
+                          size: 18,
+                          color: _inside ? AppColors.success : AppColors.error,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _inside
+                                ? 'Titik pengantaran berada dalam wilayah layanan.'
+                                : 'Titik berada di luar wilayah layanan. Pilih titik lain.',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: _inside
+                                  ? AppColors.success
+                                  : AppColors.error,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              SafeArea(
+                top: false,
+                child: SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: _inside
+                        ? () => Navigator.pop(context, _pin)
+                        : null,
+                    child: const Text('Gunakan titik ini'),
+                  ),
+                ),
               ),
-            ),
+              const SizedBox(height: 4),
+              TextButton(
+                onPressed: () => launchUrl(
+                  Uri.parse('https://www.openstreetmap.org/copyright'),
+                  mode: LaunchMode.externalApplication,
+                ),
+                child: const Text(
+                  '© OpenStreetMap contributors',
+                  style: TextStyle(fontSize: 11, color: AppColors.textMuted),
+                ),
+              ),
+            ],
           ),
         ),
       ],

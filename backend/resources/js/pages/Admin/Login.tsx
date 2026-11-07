@@ -21,13 +21,13 @@ export default function Login() {
         <>
             <Head title="Masuk admin" />
             <div className="grid min-h-dvh lg:grid-cols-[1.05fr_1fr]">
-                <section className="relative hidden overflow-hidden bg-primary p-12 text-white lg:flex lg:flex-col xl:p-16">
+                <section className="relative hidden overflow-hidden bg-[#182e40] p-12 text-white lg:flex lg:flex-col xl:p-16">
                     <div className="flex items-center gap-2 text-xl font-semibold">
                         <Truck className="size-7" />
                         ShipX
                     </div>
                     <div className="relative z-10 my-auto max-w-lg py-20">
-                        <h1 className="text-5xl font-semibold leading-[1.12] tracking-tight">
+                        <h1 className="text-5xl font-bold leading-[1.15] tracking-[-0.055em] xl:text-6xl">
                             Semua barang.
                             <br />
                             Satu kendali.
@@ -38,15 +38,15 @@ export default function Login() {
                             kerja.
                         </p>
                         <div className="mt-12 flex items-center gap-3 text-white/80">
-                            <div className="grid size-12 place-items-center rounded-xl border border-white/25">
+                            <div className="grid size-14 place-items-center rounded-2xl bg-white/10 text-[#85d9dd]">
                                 <Boxes />
                             </div>
-                            <span className="h-px w-12 bg-white/25" />
-                            <div className="grid size-12 place-items-center rounded-xl border border-white/25">
+                            <span className="h-px w-12 border-t border-dashed border-white/40" />
+                            <div className="grid size-14 place-items-center rounded-2xl bg-primary">
                                 <Truck />
                             </div>
-                            <span className="h-px w-12 bg-white/25" />
-                            <div className="grid size-12 place-items-center rounded-xl border border-white/25">
+                            <span className="h-px w-12 border-t border-dashed border-white/40" />
+                            <div className="grid size-14 place-items-center rounded-2xl bg-white/10 text-[#85d9dd]">
                                 <MapPin />
                             </div>
                         </div>
@@ -54,17 +54,13 @@ export default function Login() {
                     <p className="text-xs text-white/65">
                         Barang sampai, urusan beres.
                     </p>
-                    <div
-                        aria-hidden="true"
-                        className="pointer-events-none absolute -bottom-48 -right-48 size-[520px] rounded-full border-[70px] border-white/5"
-                    />
                 </section>
-                <main className="flex flex-col px-6 py-8 sm:px-12">
+                <main className="flex flex-col bg-card px-6 py-8 sm:px-12">
                     <div className="lg:invisible">
                         <Brand />
                     </div>
                     <div className="mx-auto my-auto w-full max-w-sm py-16">
-                        <div className="mb-7 grid size-11 place-items-center rounded-xl border bg-card">
+                        <div className="mb-7 grid size-12 place-items-center rounded-2xl bg-secondary">
                             <ShieldCheck className="size-5 text-primary" />
                         </div>
                         <h2 className="text-3xl font-semibold tracking-tight">

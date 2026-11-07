@@ -12,9 +12,15 @@ Fondasi pemesanan dan pengantaran berbagai barang dari satu pusat pemenuhan: Flu
 
 ## Status
 
-Checkpoint terbaru: admin dapat mengonfirmasi/menolak pending dengan alasan, pencatatan keputusan dan reservasi stok yang konsisten. Flutter menampilkan status/alasan serta refresh manual dan pembaruan foreground. Migration order_decisions sudah Ran; 58 tes backend / 742 assertions, tes Flutter terbaru, browser desktop/mobile dan race keputusan MySQL lolos. Rincian: [keputusan admin](docs/ORDER_DECISIONS_CHECKPOINT.md). Pernyataan konfirmasi masih menyusul pada catatan checkpoint sebelumnya telah digantikan.
+Checkpoint 6 November 2026 mencakup [hasil kiriman, foto privat dan COD](docs/DELIVERY_RESULTS_CHECKPOINT.md). Kurir mencatat seluruh order berhasil/gagal sesuai urutan, dengan ledger dan COD atomik serta pemulihan retry foto/hasil. Setelah semua tujuan, trip menunggu rekonsiliasi. Migration 000009 Ran, Flutter53/browser6/analyzer/build/APK dan race MySQL lolos. Rekonsiliasi serta penutupan trip dikerjakan berikutnya.
 
-Autentikasi, katalog, depot, alamat/slot, stok, checkout COD serta keputusan admin tersedia. Admin React + Inertia mengelola stok beralasan dan mengonfirmasi/menolak pending; customer Flutter mempunyai keranjang, quote server, checkout, riwayat/detail, status terbaru dan pembatalan sebelum penugasan. Master kurir/kendaraan, penugasan trip dan pengantaran adalah tahap berikutnya. Catat stok nyata melalui `/admin/stock`; saldo awal produk nol. Detail terbaru: [keputusan admin](docs/ORDER_DECISIONS_CHECKPOINT.md), [migrasi shadcn](docs/ADMIN_UI_MIGRATION.md), [status setup](docs/SETUP_STATUS.md).
+Checkpoint terbaru 5 November 2026: [konfirmasi muatan dan start trip](docs/TRIP_DEPARTURES_CHECKPOINT.md) tersedia. Admin meninjau durasi jalan manual beserta sumber; kurir memeriksa semua SKU dan mulai dengan transfer ledger/reservation/status atomik. Migration 000008 Ran; 85 tes backend, 48 Flutter, 6 browser, analyzer/build/APK serta race MySQL lolos. `.env` utuh; belum commit/push. HP belum terdeteksi untuk pemasangan APK terbaru. Berikutnya hasil pengiriman, bukti, COD dan rekonsiliasi. Status checkpoint lama di bawah merupakan histori.
+
+Checkpoint aktif: [penugasan trip manual](docs/MANUAL_TRIPS_CHECKPOINT.md) tersedia di admin dan Flutter kurir. Draft, urutan tujuan, penetapan, reopen/batal sebelum berangkat, kapasitas dan penguncian eksklusif sudah diuji. Migration 000007 sudah Ran; 77 tes backend, 43 tes Flutter, 5 skenario browser, build/analyzer dan race MySQL lolos. Perubahan masih lokal develop. HP belum terdeteksi untuk uji trip terbaru. ETA/routing, pemuatan/start, hasil/COD dan rekonsiliasi menyusul; penugasan belum memindahkan stok. Catatan checkpoint sebelumnya di bawah merupakan histori.
+
+Checkpoint terbaru: master kurir/kendaraan tersedia pada admin, termasuk kapasitas, aktif/nonaktif, konflik versi dan revokasi token kurir. Migration fleet_masters sudah Ran; 67 tes backend / 1002 assertions, empat skenario browser dan uji HP checkout/keputusan/login kurir lolos. Rincian: [master armada dan uji HP](docs/FLEET_MASTERS_CHECKPOINT.md). Perubahan checkpoint ini masih lokal di develop sampai ditinjau dan di-commit pengguna.
+
+Autentikasi, katalog, depot, alamat/slot, stok, checkout COD, keputusan admin serta master kurir/kendaraan tersedia. Admin React + Inertia mengelola stok beralasan dan mengonfirmasi/menolak pending; customer Flutter mempunyai keranjang, quote server, checkout, riwayat/detail, status terbaru dan pembatalan sebelum penugasan. Berikutnya penugasan trip dan pengantaran manual. Catat stok nyata melalui `/admin/stock`; saldo awal produk nol. Detail: [master armada](docs/FLEET_MASTERS_CHECKPOINT.md), [keputusan admin](docs/ORDER_DECISIONS_CHECKPOINT.md), [status setup](docs/SETUP_STATUS.md).
 
 ## Menjalankan backend
 
@@ -59,7 +65,7 @@ php artisan test
 php artisan route:list --path=api
 ```
 
-Checkpoint keputusan: 58 tes backend (742 assertions), suite Flutter dengan lima tes status baru, analyzer, TypeScript, build Vite/APK dan 2 skenario browser desktop/mobile lolos. Dari backend jalankan `npm.cmd run typecheck`; panduan browser QA ada di docs/ADMIN_UI_MIGRATION.md. Jalankan `flutter test` dari mobile. Tes MySQL terisolasi dari root: `php scripts/verify-checkout-mysql.php` dan `php scripts/verify-order-decisions-mysql.php`. Integration test HP auth/katalog sebelumnya lolos; checkout dan keputusan admin di HP belum selesai terkonfirmasi.
+Checkpoint master armada: 67 tes backend (1002 assertions), analyzer, TypeScript/build, empat skenario browser serta integration test HP I2405 lolos. Dari backend jalankan `npm.cmd run typecheck`; panduan browser QA ada di docs/ADMIN_UI_MIGRATION.md. Jalankan `flutter test` dari mobile untuk unit/widget. Tes MySQL terisolasi dari root: `php scripts/verify-checkout-mysql.php` dan `php scripts/verify-order-decisions-mysql.php`. Uji HP `mobile/integration_test/checkout_flow_test.dart` mencakup checkout, keputusan, pembatalan dan login kurir dengan database QA terpisah; setelah selesai aplikasi normal dikembalikan ke API utama.
 
 ## Akun staf dan web admin
 

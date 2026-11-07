@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../core/app_theme.dart';
+import '../core/app_widgets.dart';
 import '../core/auth_api.dart';
 import '../core/auth_session.dart';
 import '../catalog_page.dart' show rupiah;
@@ -28,9 +30,15 @@ String slotDate(String value, String timezone) {
 }
 
 class DeliveryPage extends StatefulWidget {
-  const DeliveryPage({super.key, required this.session, this.shopping});
+  const DeliveryPage({
+    super.key,
+    required this.session,
+    this.shopping,
+    this.openCart,
+  });
   final AuthSession session;
   final ShoppingState? shopping;
+  final VoidCallback? openCart;
   @override
   State<DeliveryPage> createState() => _DeliveryPageState();
 }
@@ -54,6 +62,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
       DateTime.parse(s['cutoff_at']).isAfter(_now) &&
       DateTime.parse(s['window_start_at']).isAfter(_now);
   bool get _locked => widget.shopping?.locked ?? false;
+
   void _chooseAddress(Map<String, dynamic> value) {
     if (_locked) return;
     setState(() => _selectedAddress = value['id']);
@@ -257,6 +266,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (c) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text('Hapus alamat?'),
         content: Text(
           'Alamat ${address['label']} akan dinonaktifkan dari daftar Anda.',
@@ -267,6 +277,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
             child: const Text('Batal'),
           ),
           FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.error),
             onPressed: () => Navigator.pop(c, true),
             child: const Text('Hapus'),
           ),
@@ -321,19 +332,172 @@ class _DeliveryPageState extends State<DeliveryPage> {
     }
   }
 
+  Widget _addressTile(Map<String, dynamic> address) {
+    final selected = _selectedAddress == address['id'];
+    return AppPanel(
+      color: selected ? AppColors.primaryLighter : Colors.white,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          AppSectionTitle(
+            title: address['label'],
+            icon: Icons.home_outlined,
+            action: selected
+                ? const Icon(
+                    Icons.check_circle_rounded,
+                    color: AppColors.primary,
+                    size: 22,
+                  )
+                : null,
+          ),
+          Text(
+            address['recipient_name'],
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            address['phone'],
+            style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            address['address_text'],
+            style: const TextStyle(
+              fontSize: 13,
+              color: AppColors.textBody,
+              height: 1.6,
+            ),
+          ),
+          if (address['within_service_area'] != true)
+            const Padding(
+              padding: EdgeInsets.only(top: 12),
+              child: InfoBanner(
+                message: 'Di luar wilayah layanan saat ini. Edit pin alamat.',
+                color: AppColors.error,
+                backgroundColor: AppColors.errorBg,
+              ),
+            ),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              FilledButton.tonal(
+                onPressed: address['within_service_area'] == true && !_locked
+                    ? () => _chooseAddress(address)
+                    : null,
+                child: Text(selected ? 'Dipilih' : 'Pilih alamat'),
+              ),
+              TextButton(
+                onPressed: _locked ? null : () => _edit(address),
+                child: const Text('Edit'),
+              ),
+              TextButton(
+                onPressed: _locked ? null : () => _delete(address),
+                child: const Text('Hapus'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _slotTile(Map<String, dynamic> slot) {
+    final selected = _selectedSlot == slot['id'];
+    return Semantics(
+      selected: selected,
+      button: true,
+      child: Material(
+        color: selected ? AppColors.primaryLight : Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onTap: _locked ? null : () => _chooseSlot(slot),
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  selected
+                      ? Icons.radio_button_checked_rounded
+                      : Icons.radio_button_off_rounded,
+                  color: selected ? AppColors.primary : AppColors.textMuted,
+                  size: 22,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${slotTime(slot['window_start_at'], _depot!['timezone'])}\u2013${slotTime(slot['window_end_at'], _depot!['timezone'])}',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      Text(
+                        'Batas pesan ${slotDate(slot['cutoff_at'], _depot!['timezone'])} ${slotTime(slot['cutoff_at'], _depot!['timezone'])}',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: AppColors.textMuted,
+                          height: 1.6,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    if (_busy) return const Center(child: CircularProgressIndicator());
+    if (_busy) {
+      return const Center(
+        child: CircularProgressIndicator(color: AppColors.primary),
+      );
+    }
     if (_error != null) {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(_error!),
-              TextButton(onPressed: _load, child: const Text('Coba lagi')),
-            ],
+          child: Card(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.cloud_off_rounded,
+                    size: 48,
+                    color: AppColors.warning,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    _error!,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      color: AppColors.textBody,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  FilledButton(
+                    onPressed: _load,
+                    child: const Text('Coba lagi'),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       );
@@ -341,41 +505,89 @@ class _DeliveryPageState extends State<DeliveryPage> {
     if (_depot?['configured'] != true) {
       return RefreshIndicator(
         onRefresh: _load,
+        color: AppColors.primary,
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.all(24),
           children: [
-            const Icon(Icons.warehouse_outlined, size: 56),
-            const SizedBox(height: 20),
-            Text(
-              'Wilayah pengiriman sedang disiapkan',
-              style: Theme.of(context).textTheme.headlineSmall,
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  children: [
+                    Container(
+                      width: 80,
+                      height: 80,
+                      decoration: BoxDecoration(
+                        color: AppColors.warningBg,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: const Icon(
+                        Icons.warehouse_outlined,
+                        size: 56,
+                        color: AppColors.warning,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    Text(
+                      'Wilayah pengiriman sedang disiapkan',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.headlineSmall
+                          ?.copyWith(
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.textMain,
+                            letterSpacing: -0.5,
+                          ),
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Admin perlu melengkapi lokasi dan radius depot. Setelah siap, Anda bisa menambahkan alamat dan memilih jadwal.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: AppColors.textMuted,
+                        height: 1.4,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    FilledButton(
+                      onPressed: _load,
+                      child: const Text('Periksa kembali'),
+                    ),
+                  ],
+                ),
+              ),
             ),
-            const SizedBox(height: 12),
-            const Text(
-              'Admin perlu melengkapi lokasi dan radius depot. Setelah siap, Anda bisa menambahkan alamat dan memilih jadwal.',
-            ),
-            TextButton(onPressed: _load, child: const Text('Periksa kembali')),
           ],
         ),
       );
     }
     return RefreshIndicator(
       onRefresh: _load,
+      color: AppColors.primary,
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(22),
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
         children: [
-          Text(
-            'Alamat & jadwal',
-            style: Theme.of(
-              context,
-            ).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800),
+          const AppPageIntro(
+            title: 'Alamat & jadwal',
+            description: 'Pilih tujuan, lalu tentukan waktu pengantaran.',
           ),
-          const SizedBox(height: 8),
-          Text(
-            '${_depot!['name']} · Ongkir ${rupiah(_depot!['delivery_fee_rp'])}',
-            style: const TextStyle(color: Color(0xFF657B83)),
+          AppPanel(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                AppSectionTitle(
+                  title: _depot!['name'],
+                  subtitle: 'Pengiriman dari depot',
+                  icon: Icons.warehouse_outlined,
+                ),
+                AppAmountLine(
+                  label: 'Ongkir per pesanan',
+                  value: rupiah(_depot!['delivery_fee_rp']),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 24),
           Row(
@@ -383,159 +595,213 @@ class _DeliveryPageState extends State<DeliveryPage> {
               Expanded(
                 child: Text(
                   'Alamat pengantaran',
-                  style: Theme.of(context).textTheme.titleLarge,
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 18,
+                    color: AppColors.textMain,
+                  ),
                 ),
               ),
-              TextButton.icon(
+              FilledButton.icon(
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(40, 40),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 8,
+                  ),
+                ),
                 onPressed: _locked ? null : () => _edit(),
-                icon: const Icon(Icons.add),
+                icon: const Icon(Icons.add, size: 18),
                 label: const Text('Tambah'),
               ),
             ],
           ),
+          const SizedBox(height: 10),
           if (_addresses.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 20),
-              child: Text(
-                'Belum ada alamat. Tambahkan penerima dan pin lokasi terlebih dahulu.',
-              ),
-            ),
-          for (final a in _addresses)
             Card(
-              color: Colors.white,
               child: Padding(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(24),
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            a['label'],
-                            style: const TextStyle(fontWeight: FontWeight.w700),
-                          ),
-                        ),
-                        if (_selectedAddress == a['id'])
-                          const Icon(
-                            Icons.check_circle,
-                            color: Color(0xFF087E8B),
-                          ),
-                      ],
+                  children: const [
+                    Icon(
+                      Icons.pin_drop_outlined,
+                      size: 40,
+                      color: AppColors.textMuted,
                     ),
-                    Text('${a['recipient_name']} · ${a['phone']}'),
-                    Text(a['address_text']),
-                    if (a['within_service_area'] != true)
-                      const Text(
-                        'Di luar wilayah layanan saat ini. Edit pin alamat.',
-                        style: TextStyle(color: Colors.red),
+                    SizedBox(height: 12),
+                    Text(
+                      'Belum ada alamat. Tambahkan penerima dan pin lokasi terlebih dahulu.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: AppColors.textMuted,
                       ),
-                    Wrap(
-                      spacing: 8,
-                      children: [
-                        TextButton(
-                          onPressed:
-                              a['within_service_area'] == true && !_locked
-                              ? () => _chooseAddress(a)
-                              : null,
-                          child: Text(
-                            _selectedAddress == a['id']
-                                ? 'Dipilih'
-                                : 'Pilih alamat',
-                          ),
-                        ),
-                        TextButton(
-                          onPressed: _locked ? null : () => _edit(a),
-                          child: const Text('Edit'),
-                        ),
-                        TextButton(
-                          onPressed: _locked ? null : () => _delete(a),
-                          child: const Text('Hapus'),
-                        ),
-                      ],
                     ),
                   ],
                 ),
               ),
             ),
+          for (final a in _addresses)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: _addressTile(a),
+            ),
           if (_addressPage < _addressLast)
-            TextButton(
-              onPressed: _addressMore ? null : _moreAddresses,
-              child: Text(_addressMore ? 'Memuat...' : 'Muat alamat lainnya'),
+            Center(
+              child: TextButton(
+                onPressed: _addressMore ? null : _moreAddresses,
+                child: Text(_addressMore ? 'Memuat...' : 'Muat alamat lainnya'),
+              ),
             ),
           const SizedBox(height: 24),
-          Text(
-            'Jadwal pengiriman',
-            style: Theme.of(context).textTheme.titleLarge,
-          ),
-          TextButton.icon(
-            onPressed: _locked ? null : _pickDate,
-            icon: const Icon(Icons.calendar_today_outlined),
-            label: Text('$_date · ${_depot!['timezone']}'),
-          ),
-          if (_slotBusy)
-            const Center(child: CircularProgressIndicator())
-          else if (_slotError != null)
-            Column(
-              children: [
-                Text(_slotError!),
-                TextButton(
-                  onPressed: () => _loadSlots(),
-                  child: const Text('Muat ulang slot'),
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text(
+                'Jadwal pengiriman',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 18,
+                  color: AppColors.textMain,
                 ),
-              ],
+              ),
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size(40, 38),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                ),
+                onPressed: _locked ? null : _pickDate,
+                icon: const Icon(Icons.calendar_today_outlined, size: 16),
+                label: Text(
+                  '$_date · ${_depot!['timezone']}',
+                  style: const TextStyle(fontSize: 12),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (_slotBusy)
+            const Padding(
+              padding: EdgeInsets.all(24),
+              child: Center(
+                child: CircularProgressIndicator(color: AppColors.primary),
+              ),
+            )
+          else if (_slotError != null)
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    Text(
+                      _slotError!,
+                      style: const TextStyle(color: Colors.red),
+                    ),
+                    const SizedBox(height: 10),
+                    TextButton(
+                      onPressed: () => _loadSlots(),
+                      child: const Text('Muat ulang slot'),
+                    ),
+                  ],
+                ),
+              ),
             )
           else if (_slots.where(_open).isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 16),
-              child: Text(
-                'Belum ada slot terbuka untuk tanggal ini. Pilih tanggal lain atau muat ulang.',
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  children: const [
+                    Icon(
+                      Icons.schedule_outlined,
+                      size: 40,
+                      color: AppColors.textMuted,
+                    ),
+                    SizedBox(height: 12),
+                    Text(
+                      'Belum ada slot terbuka untuk tanggal ini. Pilih tanggal lain atau muat ulang.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: AppColors.textMuted,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             )
           else ...[
             for (final s in _slots.where(_open))
-              Card(
-                color: Colors.white,
-                child: ListTile(
-                  selected: _selectedSlot == s['id'],
-                  leading: Icon(
-                    _selectedSlot == s['id']
-                        ? Icons.check_circle
-                        : Icons.schedule,
-                    color: const Color(0xFF087E8B),
-                  ),
-                  title: Text(
-                    '${slotTime(s['window_start_at'], _depot!['timezone'])}–${slotTime(s['window_end_at'], _depot!['timezone'])}',
-                  ),
-                  subtitle: Text(
-                    'Batas pesan ${slotDate(s['cutoff_at'], _depot!['timezone'])} ${slotTime(s['cutoff_at'], _depot!['timezone'])}',
-                  ),
-                  onTap: _locked ? null : () => _chooseSlot(s),
-                ),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: _slotTile(s),
               ),
           ],
           if (!_slotBusy && _slotError == null && _slotPage < _slotLast)
-            TextButton(
-              onPressed: _slotMore ? null : () => _loadSlots(next: true),
-              child: Text(_slotMore ? 'Memuat...' : 'Muat slot lainnya'),
+            Center(
+              child: TextButton(
+                onPressed: _slotMore ? null : () => _loadSlots(next: true),
+                child: Text(_slotMore ? 'Memuat...' : 'Muat slot lainnya'),
+              ),
             ),
           const SizedBox(height: 20),
           Container(
-            padding: const EdgeInsets.all(18),
+            padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: const Color(0xFFE7F4F4),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: AppColors.primary.withValues(alpha: 0.2),
+              ),
             ),
-            child: Text(
-              _selectedAddress != null && _selectedSlot != null
-                  ? 'Alamat dan jadwal sudah dipilih. Pilihan ini belum membuat pesanan atau memesan stok.'
-                  : 'Pilih alamat dan jadwal, lalu buka Keranjang untuk menghitung total dan membuat pesanan.',
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(
+                  Icons.info_outline_rounded,
+                  size: 20,
+                  color: AppColors.primary,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    _selectedAddress != null && _selectedSlot != null
+                        ? 'Alamat dan jadwal sudah dipilih. Pilihan ini belum membuat pesanan atau memesan stok.'
+                        : 'Pilih alamat dan jadwal, lalu buka Keranjang untuk menghitung total dan membuat pesanan.',
+                    style: const TextStyle(
+                      fontSize: 13,
+                      height: 1.4,
+                      color: AppColors.primaryDark,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
-          TextButton.icon(
-            onPressed: _load,
-            icon: const Icon(Icons.refresh),
-            label: const Text('Muat ulang pengiriman'),
+          if (widget.openCart != null &&
+              _selectedAddress != null &&
+              _selectedSlot != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 16),
+              child: FilledButton.icon(
+                onPressed: _locked ? null : widget.openCart,
+                icon: const Icon(Icons.shopping_bag_outlined),
+                label: const Text('Lanjut ke keranjang'),
+              ),
+            ),
+          const SizedBox(height: 12),
+          Center(
+            child: TextButton.icon(
+              onPressed: _load,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Muat ulang pengiriman'),
+            ),
           ),
         ],
       ),

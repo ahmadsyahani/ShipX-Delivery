@@ -33,7 +33,7 @@ export default function SlotForm({
             <Head title={slot ? "Edit slot" : "Tambah slot"} />
             <PageHeading
                 title={slot ? "Edit slot" : "Tambah slot"}
-                description={`Semua waktu menggunakan ${depot.timezone}.`}
+                description="Atur tanggal dan jam pengiriman."
                 back={{ href: "/admin/slots", label: "Slot pengiriman" }}
             />
             <form

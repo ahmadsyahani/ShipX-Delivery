@@ -101,6 +101,8 @@ void main() {
 
   testWidgets('customer selects own address and open slot', (tester) async {
     await mount(tester, DeliverySession());
+    await tester.scrollUntilVisible(find.text('Pilih alamat'), 180);
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Pilih alamat'));
     await tester.pump();
     await tester.ensureVisible(find.text('12:00–14:00'));
@@ -122,8 +124,8 @@ void main() {
 
   testWidgets('out-of-area address cannot be selected', (tester) async {
     await mount(tester, DeliverySession()..outside = true);
-    final button = tester.widget<TextButton>(
-      find.widgetWithText(TextButton, 'Pilih alamat'),
+    final button = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'Pilih alamat'),
     );
     expect(button.onPressed, isNull);
     expect(

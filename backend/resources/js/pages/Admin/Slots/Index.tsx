@@ -39,7 +39,7 @@ export default function Slots({
             <Head title="Slot pengiriman" />
             <PageHeading
                 title="Slot pengiriman"
-                description={`Atur gelombang pengantaran. Semua waktu mengikuti ${depot.timezone}.`}
+                description="Atur tanggal dan jam pengantaran sesuai waktu depot."
                 action={
                     <Button asChild>
                         <Link href="/admin/slots/create">

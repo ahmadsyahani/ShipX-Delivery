@@ -153,13 +153,11 @@ export default function Products({
                                             {money(product.unit_price_rp)}
                                         </p>
                                         <p className="mt-1 text-xs text-muted-foreground">
-                                            per {product.unit_label}
+                                            per item
                                         </p>
                                     </TableCell>
-                                    <TableCell className="text-xs leading-5 text-muted-foreground">
-                                        {product.shipping_weight_g} g<br />
-                                        {product.length_mm} × {product.width_mm}{" "}
-                                        × {product.height_mm} mm
+                                    <TableCell className="text-xs text-muted-foreground">
+                                        Per item
                                     </TableCell>
                                     <TableCell>
                                         <StatusBadge

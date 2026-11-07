@@ -12,6 +12,8 @@ import {
     Menu,
     Package,
     Truck,
+    Users,
+    CarFront,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -36,20 +38,22 @@ import type { Shared } from "@/types";
 const navigation = [
     { href: "/admin", label: "Ringkasan", icon: LayoutDashboard },
     { href: "/admin/orders", label: "Pesanan", icon: ClipboardList },
+    { href: "/admin/trips", label: "Trip pengiriman", icon: Truck },
     { href: "/admin/products", label: "Produk", icon: Package },
     { href: "/admin/stock", label: "Stok", icon: Boxes },
     { href: "/admin/slots", label: "Slot pengiriman", icon: CalendarClock },
     { href: "/admin/depot", label: "Depot", icon: MapPin },
+    { href: "/admin/couriers", label: "Kurir", icon: Users },
+    { href: "/admin/vehicles", label: "Kendaraan", icon: CarFront },
 ];
 
 export function Brand() {
     return (
-        <span className="flex items-center gap-2.5 text-xl font-bold tracking-tight">
-            <span className="grid size-9 place-items-center rounded-lg bg-primary text-white">
+        <span className="flex items-center gap-3 text-2xl font-extrabold tracking-[-0.06em]">
+            <span className="grid size-10 place-items-center rounded-xl bg-primary text-white">
                 <Truck className="size-5" />
             </span>
             ShipX
-            <span className="mb-2 size-1.5 rounded-full bg-primary" />
         </span>
     );
 }
@@ -75,10 +79,10 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                         onClick={() => setOpen(false)}
                         aria-current={active ? "page" : undefined}
                         className={cn(
-                            "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring",
+                            "flex min-h-11 items-center gap-3 rounded-xl px-3.5 py-3 text-[13px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-ring",
                             active
-                                ? "bg-primary/10 text-primary"
-                                : "text-muted-foreground",
+                                ? "bg-[#e6f4f4] text-[#05555e]"
+                                : "text-[#bacdd9] hover:bg-[#243e51] hover:text-white",
                         )}
                     >
                         <Icon className="size-[18px]" />
@@ -96,31 +100,34 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             >
                 Lewati ke konten
             </a>
-            <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r bg-card px-5 py-7 lg:flex">
+            <aside className="shipx-sidebar fixed inset-y-0 left-0 z-30 hidden w-64 flex-col overflow-y-auto px-5 py-8 lg:flex">
                 <Link href="/admin" aria-label="ShipX beranda">
                     <Brand />
                 </Link>
-                <p className="mb-4 mt-10 px-3 text-xs text-muted-foreground">
+                <p className="mb-3 mt-10 px-3 text-xs text-[#bacdd9]">
                     Ruang operasional
                 </p>
                 {nav}
-                <div className="mt-auto rounded-xl border bg-background p-4">
-                    <div className="flex items-center gap-2 text-sm font-medium">
-                        <span className="size-2 rounded-full bg-primary" />
-                        Pusat pemenuhan
+                <div className="mt-auto pt-8">
+                    <div className="rounded-2xl border border-white/15 bg-white/5 p-4">
+                        <div className="flex items-center gap-2 text-sm font-medium">
+                            <MapPin className="size-4 text-[#85d9dd]" />
+                            Pusat pemenuhan
+                        </div>
+                        <p className="mt-2 text-xs leading-5 text-[#bacdd9]">
+                            Kelola barang dan jadwal dari satu depot.
+                        </p>
+                        <Link
+                            href="/admin/depot"
+                            className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-[#85d9dd] hover:underline"
+                        >
+                            Pengaturan depot{" "}
+                            <ArrowUpRight className="size-3.5" />
+                        </Link>
                     </div>
-                    <p className="mt-2 text-xs leading-5 text-muted-foreground">
-                        Kelola barang dan jadwal dari satu depot.
-                    </p>
-                    <Link
-                        href="/admin/depot"
-                        className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-primary"
-                    >
-                        Pengaturan depot <ArrowUpRight className="size-3.5" />
-                    </Link>
                 </div>
             </aside>
-            <div className="lg:pl-60">
+            <div className="min-w-0 lg:pl-64">
                 <header className="sticky top-0 z-20 flex h-[72px] items-center justify-between gap-3 border-b bg-card/95 px-4 backdrop-blur sm:px-8">
                     <div className="flex items-center gap-3">
                         <Sheet open={open} onOpenChange={setOpen}>
@@ -134,9 +141,12 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                                     <Menu />
                                 </Button>
                             </SheetTrigger>
-                            <SheetContent side="left" className="w-72 p-5">
+                            <SheetContent
+                                side="left"
+                                className="shipx-sidebar w-72 p-5 [&>button]:text-white"
+                            >
                                 <SheetHeader className="p-0 pb-8">
-                                    <SheetTitle>
+                                    <SheetTitle className="text-white">
                                         <Brand />
                                     </SheetTitle>
                                 </SheetHeader>
@@ -144,8 +154,10 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                             </SheetContent>
                         </Sheet>
                         <span className="text-sm text-muted-foreground">
-                            Operasional{" "}
-                            <span className="px-2 text-border">/</span>
+                            <span className="hidden sm:inline">
+                                Operasional{" "}
+                                <span className="px-2 text-border">/</span>
+                            </span>
                             <span className="font-medium text-foreground">
                                 {current?.label ?? "ShipX"}
                             </span>
@@ -189,7 +201,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                 </header>
                 <main
                     id="main-content"
-                    className="mx-auto max-w-[1440px] space-y-7 p-4 pb-12 sm:p-8 lg:p-10"
+                    className="mx-auto max-w-[1440px] space-y-7 px-4 py-6 pb-12 sm:p-8 lg:p-10"
                     tabIndex={-1}
                 >
                     {flash.status && (
@@ -204,7 +216,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                     )}
                     {children}
                 </main>
-                <footer className="mx-auto flex max-w-[1440px] justify-between gap-4 px-4 pb-7 text-xs text-muted-foreground sm:px-8 lg:px-10">
+                <footer className="mx-auto flex max-w-[1440px] flex-wrap justify-between gap-2 px-4 pb-7 text-xs text-muted-foreground sm:px-8 lg:px-10">
                     <span>ShipX · Ruang operasional</span>
                     <span>Barang sampai, urusan beres.</span>
                 </footer>

@@ -10,6 +10,6 @@ class StockReservation extends Model
 
     protected function casts(): array
     {
-        return ['quantity' => 'integer', 'released_at' => 'immutable_datetime'];
+        return ['quantity' => 'integer', 'released_at' => 'immutable_datetime', 'consumed_at' => 'immutable_datetime'];
     }
 }

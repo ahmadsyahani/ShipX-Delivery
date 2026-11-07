@@ -82,6 +82,36 @@ void main() {
     return shopping;
   }
 
+  testWidgets(
+    'assigned order hides cancellation and refreshes reopening to confirmed',
+    (tester) async {
+      final session = StatusSession()..status = 'assigned';
+      await show(tester, session);
+      expect(find.text('Ditugaskan'), findsOneWidget);
+      expect(find.text('Batalkan pesanan'), findsNothing);
+      session.status = 'confirmed';
+      await tester.pump(const Duration(seconds: 15));
+      await tester.pumpAndSettle();
+      expect(find.text('Dikonfirmasi'), findsOneWidget);
+      await tester.scrollUntilVisible(find.text('Batalkan pesanan'), 200);
+      expect(find.text('Batalkan pesanan'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'assigned order refreshes to out for delivery after courier starts',
+    (tester) async {
+      final session = StatusSession()..status = 'assigned';
+      await show(tester, session);
+      session.status = 'out_for_delivery';
+      await tester.pump(const Duration(seconds: 15));
+      await tester.pumpAndSettle();
+      expect(find.text('Dalam pengantaran'), findsOneWidget);
+      expect(find.textContaining('Kurir sudah berangkat'), findsOneWidget);
+      expect(find.text('Batalkan pesanan'), findsNothing);
+    },
+  );
+
   testWidgets('automatic refresh does not discard pages the customer loaded', (
     tester,
   ) async {

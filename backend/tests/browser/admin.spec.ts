@@ -9,6 +9,7 @@ async function login(page: Page) {
   await page.getByLabel('Kata sandi', { exact: true }).fill('ShipX-QA-Admin-2026!');
   await page.getByRole('button', { name: 'Masuk', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Selamat bekerja, QA.' })).toBeVisible();
+  expect(await page.evaluate(async () => (await document.fonts.load('500 16px "Plus Jakarta Sans"')).length)).toBeGreaterThan(0);
 }
 
 test('admin React: auth, SPA navigation, products, validation, conflict, stock, depot, slots and orders', async ({ page, context }) => {
@@ -30,11 +31,16 @@ test('admin React: auth, SPA navigation, products, validation, conflict, stock, 
   expect(await page.evaluate(() => (window as Window & { shipxNavCheck?: string }).shipxNavCheck)).toBe('inertia');
   await page.getByRole('link', { name: 'Tambah produk', exact: true }).click();
   const sku = `UI-${Date.now()}`;
-  for (const [label, value] of Object.entries({ 'Nama produk': 'Produk uji React', 'Kode SKU': sku, Kategori: 'Pengujian', 'Satuan jual': 'pak', 'Harga per satuan (Rp)': '15000', 'Berat (gram)': '1000', 'Panjang (mm)': '100', 'Lebar (mm)': '100', 'Tinggi (mm)': '100' })) {
+  for (const [label, value] of Object.entries({ 'Nama produk': 'Produk uji React', 'Kode SKU': sku, Kategori: 'Pengujian', 'Harga per satuan (Rp)': '15000', 'Berat satu item (kg)': '1', 'Panjang kemasan (cm)': '10', 'Lebar kemasan (cm)': '10', 'Tinggi kemasan (cm)': '10' })) {
     await page.getByLabel(label, { exact: true }).fill(value);
   }
   await page.getByRole('switch', { name: 'Produk aktif' }).click();
+  const savedPackaging = page.waitForRequest(request => request.method() === 'POST' && new URL(request.url()).pathname === '/admin/products');
   await page.getByRole('button', { name: 'Simpan produk', exact: true }).click();
+  const packagingBody = (await savedPackaging).postDataJSON();
+  expect(String(packagingBody.shipping_weight_g)).toBe('1000');
+  expect(String(packagingBody.length_mm)).toBe('100');
+  expect(packagingBody.unit_label).toBe('item');
   await expect(page.getByRole('status')).toContainText('Produk ditambahkan');
   await page.getByRole('link', { name: 'Edit Produk uji React', exact: true }).click();
   await expect(page).toHaveURL(/\/admin\/products\/\d+\/edit$/);
@@ -64,25 +70,29 @@ test('admin React: auth, SPA navigation, products, validation, conflict, stock, 
   await page.getByRole('navigation', { name: 'Navigasi utama' }).getByRole('link', { name: 'Stok', exact: true }).click();
   await page.getByRole('row').filter({ hasText: 'Produk uji React' }).getByRole('link', { name: 'Catat mutasi' }).click();
   for (const [delta, expected] of [['3', '3'], ['2', '5']]) {
-    await page.getByLabel('Perubahan jumlah (pak)', { exact: true }).fill(delta);
+    await page.getByLabel('Perubahan jumlah (item)', { exact: true }).fill(delta);
     await page.getByLabel('Alasan perubahan', { exact: true }).fill(`QA React stock ${delta}`);
     await page.getByRole('button', { name: 'Catat mutasi', exact: true }).click();
     await expect(page.getByText('Fisik tersedia', { exact: true }).locator('..').getByText(expected, { exact: true })).toBeVisible();
-    await expect(page.getByLabel('Perubahan jumlah (pak)', { exact: true })).toHaveValue('');
+    await expect(page.getByLabel('Perubahan jumlah (item)', { exact: true })).toHaveValue('');
   }
   await page.screenshot({ path: 'test-results/admin-stock-desktop.png', fullPage: true });
 
   await page.getByRole('navigation', { name: 'Navigasi utama' }).getByRole('link', { name: 'Depot', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Konfigurasi depot' })).toBeVisible();
-  await expect(page.getByLabel('Latitude (lintang)')).toHaveValue('-7.25');
+  await context.grantPermissions(['geolocation']);
+  await context.setGeolocation({ latitude: -7.25, longitude: 112.75 });
+  await page.getByRole('button', { name: 'Gunakan lokasi perangkat', exact: true }).click();
+  await expect(page.getByRole('status').filter({hasText:'Titik depot sudah dipilih'})).toBeVisible();
+  await expect(page.getByLabel('Latitude (lintang)')).toHaveCount(0);
   await expect(page.getByLabel('Zona waktu')).toBeDisabled();
   // Same-page saves must adopt the updated lock_version.
   for (const fee of ['4000', '3000']) {
     await page.getByLabel('Ongkir tetap per order (Rp)').fill(fee);
     await page.getByRole('button', { name: 'Simpan depot' }).click();
-    await expect(page.getByRole('status')).toContainText('Konfigurasi depot disimpan');
+    await expect(page.getByRole('status').filter({hasText: 'Konfigurasi depot disimpan'})).toBeVisible();
     await expect(page.getByLabel('Ongkir tetap per order (Rp)')).toHaveValue(fee);
-    await page.getByRole('status').waitFor();
+    await page.getByRole('status').filter({hasText: 'Konfigurasi depot disimpan'}).waitFor();
   }
   await page.getByRole('navigation', { name: 'Navigasi utama' }).getByRole('link', { name: 'Slot pengiriman', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Slot pengiriman', exact: true })).toBeVisible();

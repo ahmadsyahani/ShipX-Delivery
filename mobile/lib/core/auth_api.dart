@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'api_config.dart';
 
@@ -38,6 +39,84 @@ class AuthResult {
 class AuthApi {
   AuthApi({this.baseUrl = ApiConfig.baseUrl});
   final String baseUrl;
+
+  Future<Map<String, dynamic>> uploadProof(
+    String path,
+    Uint8List bytes,
+    String key, {
+    String? token,
+  }) async {
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
+    try {
+      return await (() async {
+        final boundary = 'shipx${DateTime.now().microsecondsSinceEpoch}';
+        final request = await client.postUrl(
+          Uri.parse('${baseUrl.replaceAll(RegExp(r'/+$'), '')}$path'),
+        );
+        request.followRedirects = false;
+        request.headers.set(HttpHeaders.acceptHeader, 'application/json');
+        request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
+        request.headers.set('Idempotency-Key', key);
+        request.headers.set(
+          HttpHeaders.contentTypeHeader,
+          'multipart/form-data; boundary=$boundary',
+        );
+        final png = bytes.length > 3 && bytes[0] == 137 && bytes[1] == 80;
+        final prefix = utf8.encode(
+          '--$boundary\r\nContent-Disposition: form-data; name="photo"; filename="proof.${png ? 'png' : 'jpg'}"\r\nContent-Type: image/${png ? 'png' : 'jpeg'}\r\n\r\n',
+        );
+        final suffix = utf8.encode('\r\n--$boundary--\r\n');
+        request.contentLength = prefix.length + bytes.length + suffix.length;
+        request.add(prefix);
+        request.add(bytes);
+        request.add(suffix);
+        final response = await request.close();
+        final raw = await utf8.decoder.bind(response).join();
+        final decoded = jsonDecode(raw) as Map<String, dynamic>;
+        if (response.statusCode >= 400) {
+          final errors = decoded['errors'];
+          final message = errors is Map && errors.isNotEmpty
+              ? (errors.values.first as List).join(' ')
+              : decoded['message'] as String? ?? 'Unggahan gagal.';
+          throw ApiException(
+            message,
+            response.statusCode,
+            code: decoded['code'] as String?,
+          );
+        }
+        return decoded['data'] as Map<String, dynamic>;
+      })().timeout(const Duration(seconds: 35));
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  Future<Uint8List> proofPhoto(String id, {String? token}) async {
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
+    try {
+      return await (() async {
+        final request = await client.getUrl(
+          Uri.parse(
+            '${baseUrl.replaceAll(RegExp(r'/+$'), '')}/delivery-proofs/$id',
+          ),
+        );
+        request.followRedirects = false;
+        request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
+        request.headers.set(HttpHeaders.acceptHeader, 'application/json');
+        final response = await request.close();
+        if (response.statusCode != 200) {
+          throw ApiException('Foto belum dapat dibuka.', response.statusCode);
+        }
+        final bytes = BytesBuilder();
+        await for (final chunk in response) {
+          bytes.add(chunk);
+        }
+        return bytes.takeBytes();
+      })().timeout(const Duration(seconds: 20));
+    } finally {
+      client.close(force: true);
+    }
+  }
 
   Future<AuthResult> authenticate(
     Map<String, String> fields, {

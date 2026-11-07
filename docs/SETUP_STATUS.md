@@ -1,6 +1,20 @@
 > Status terbaru — 4 November 2026: backend/MySQL dan Flutter Android berhasil dijalankan. Catatan lama di bagian "Status fondasi" di bawah dipertahankan sebagai histori; kendala cache/MySQL lama sudah terselesaikan.
 
-## Status terbaru: keputusan admin dan status Flutter — 4 November 2026
+Pembaruan UI 7 November 2026: lihat [UI_REFRESH_CHECKPOINT.md](UI_REFRESH_CHECKPOINT.md). Web/Flutter menggunakan font lokal Plus Jakarta Sans dan tema teal/navy, dengan perbaikan layout layar kecil. Tidak ada setup database atau .env yang diulang.
+
+## Status terbaru: trip manual — 4 November 2026
+
+Checkpoint aktif 6 November 2026 ada di DELIVERY_RESULTS_CHECKPOINT.md. Migration 000009 Ran, hasil kiriman/foto privat/COD dan status awaiting_reconciliation tersedia. Flutter53 dan browser6, analyzer/build/APK serta race MySQL hasil lolos. MySQL dinyalakan memakai konfigurasi Laragon yang ada, .env utuh. Kamera HP fisik belum diverifikasi. Rekonsiliasi dan penutupan trip menjadi pekerjaan berikutnya.
+
+**Digantikan checkpoint 5 November 2026:** [konfirmasi muatan dan start](TRIP_DEPARTURES_CHECKPOINT.md) sudah tersedia, migration 000008 Ran. Pengguna menyetujui estimasi jalan manual + sumber/tinjauan admin; jadwal aktual diperiksa ulang sebelum transfer stok depot→trip, reservation consumed, order out_for_delivery dan trip in_progress. 85 tes backend/1364 assertions, 48 Flutter, 6 browser, analyzer/build/APK dan race MySQL lolos. `.env` tetap identik, data bisnis tidak diberi fixture. HP belum terdeteksi; APK belum dipasang. Hasil/COD/rekonsiliasi dan penutupan trip menyusul.
+
+Penugasan manual tersedia di `/admin/trips`: draft/edit urutan, tetapkan, buka ulang/batal sebelum berangkat, claims eksklusif, versi/idempotency, kapasitas, reservasi dan audit. Flutter kurir memiliki daftar/detail assigned trip sendiri; customer assigned tidak dapat cancel. Migration 000007 sudah Ran; `.env` tidak diubah. 77 tes backend/1187 assertions, 43 tes Flutter, 5 skenario browser, analyzer, TypeScript/build, APK dan race MySQL lolos. HP tidak terdeteksi; uji trip fisik menyusul. Kelayakan jalan belum dihitung (not_evaluated, ETA null); muatan/start/delivery/COD/rekonsiliasi belum tersedia. Baca [MANUAL_TRIPS_CHECKPOINT.md](MANUAL_TRIPS_CHECKPOINT.md).
+
+## Checkpoint sebelumnya: master kurir/kendaraan dan uji HP — 4 November 2026
+
+Master kurir/kendaraan tersedia di web admin, termasuk token revocation, kapasitas, normalisasi/duplikasi pelat dan konflik versi. Migration 000006 sudah Ran. 67 tes backend / 1002 assertions, TypeScript/build, analyzer, empat skenario browser dan integration test checkout/keputusan/login kurir di HP I2405 **lolos**. Bug versi respons create checkout diperbaiki. Database QA bersih, `.env` utuh. Baca [FLEET_MASTERS_CHECKPOINT.md](FLEET_MASTERS_CHECKPOINT.md). Berikutnya trip manual, bukan setup ulang atau optimasi sebelum operasi pengiriman siap. Status HP tertunda pada checkpoint lama merupakan histori.
+
+## Checkpoint sebelumnya: keputusan admin dan status Flutter — 4 November 2026
 
 Konfirmasi/penolakan pending sudah tersedia pada web admin React. Penolakan wajib alasan dan melepas reservasi; konfirmasi menahan stok, expiry dan konflik versi tetap enforced. Flutter menampilkan Dikonfirmasi/Ditolak, alasan, refresh dan polling saat halaman aktif. Migration order_decisions sudah Ran. 58 tes backend / 742 assertions, suite Flutter dengan lima tes baru, analyzer, build APK/Vite, dua skenario browser dan uji race MySQL lolos. Lihat [ORDER_DECISIONS_CHECKPOINT.md](ORDER_DECISIONS_CHECKPOINT.md). `.env` dan data pengguna dipertahankan; uji HP checkpoint ini menyusul. Tahap berikut master kurir/kendaraan, penugasan trip dan pengantaran manual.
 

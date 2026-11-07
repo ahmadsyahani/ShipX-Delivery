@@ -60,13 +60,20 @@ export default function Orders({
                         <NativeSelectOption value="">
                             Semua status
                         </NativeSelectOption>
-                        {["pending", "confirmed", "rejected", "cancelled"].map(
-                            (value) => (
-                                <NativeSelectOption key={value} value={value}>
-                                    {orderStatus[value]}
-                                </NativeSelectOption>
-                            ),
-                        )}
+                        {[
+                            "pending",
+                            "confirmed",
+                            "assigned",
+                            "out_for_delivery",
+                            "delivered",
+                            "failed",
+                            "rejected",
+                            "cancelled",
+                        ].map((value) => (
+                            <NativeSelectOption key={value} value={value}>
+                                {orderStatus[value]}
+                            </NativeSelectOption>
+                        ))}
                     </NativeSelect>
                     <Button variant="outline">Terapkan</Button>
                     {filters.status && (
@@ -111,9 +118,6 @@ export default function Orders({
                                             order.window_start_at,
                                             order.timezone_snapshot,
                                         )}
-                                        <p className="mt-1">
-                                            {order.timezone_snapshot}
-                                        </p>
                                     </TableCell>
                                     <TableCell>
                                         <StatusBadge status={order.status} />

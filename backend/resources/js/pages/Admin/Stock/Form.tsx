@@ -66,7 +66,7 @@ export default function StockForm({
             <Head title={`Stok ${product.name}`} />
             <PageHeading
                 title={product.name}
-                description={`${product.sku} · Satuan ${product.unit_label}`}
+                description={`${product.sku} · Satuan item`}
                 back={{ href: "/admin/stock", label: "Stok depot" }}
             />
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -135,7 +135,7 @@ export default function StockForm({
                         </Field>
                         <Field
                             id="quantity_delta"
-                            label={`Perubahan jumlah (${product.unit_label})`}
+                            label={`Perubahan jumlah (item)`}
                             error={form.errors.quantity_delta}
                         >
                             <Input
@@ -192,7 +192,7 @@ export default function StockForm({
                 <div className="border-b px-5 py-5">
                     <h2 className="font-semibold">Riwayat stok</h2>
                     <p className="mt-1 text-xs text-muted-foreground">
-                        Waktu ditampilkan dalam WIB (Asia/Jakarta).
+                        Waktu mengikuti jadwal depot.
                     </p>
                 </div>
                 {entries.data.length ? (

@@ -10,6 +10,6 @@ class InventoryAccount extends Model
 
     protected function casts(): array
     {
-        return ['balance_quantity' => 'integer', 'lock_version' => 'integer'];
+        return ['balance_quantity' => 'integer', 'lock_version' => 'integer', 'trip_id' => 'integer'];
     }
 }

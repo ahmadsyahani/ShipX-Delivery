@@ -17,7 +17,7 @@ export default function ProductForm({ product }: { product: Product | null }) {
         name: product?.name ?? "",
         sku: product?.sku ?? "",
         category: product?.category ?? "",
-        unit_label: product?.unit_label ?? "",
+        unit_label: product?.unit_label ?? "item",
         unit_price_rp: String(product?.unit_price_rp ?? ""),
         shipping_weight_g: String(product?.shipping_weight_g ?? ""),
         length_mm: String(product?.length_mm ?? ""),
@@ -27,21 +27,16 @@ export default function ProductForm({ product }: { product: Product | null }) {
         is_active: product?.is_active ?? false,
         lock_version: product?.lock_version ?? 0,
     });
-    const volume =
-        Number(form.data.length_mm) *
-        Number(form.data.width_mm) *
-        Number(form.data.height_mm);
     const textFields = [
         ["name", "Nama produk", 160],
         ["sku", "Kode SKU", 64],
         ["category", "Kategori", 80],
-        ["unit_label", "Satuan jual", 30],
     ] as const;
     const sizes = [
-        ["shipping_weight_g", "Berat (gram)", 1000000],
-        ["length_mm", "Panjang (mm)", 10000],
-        ["width_mm", "Lebar (mm)", 10000],
-        ["height_mm", "Tinggi (mm)", 10000],
+        ["shipping_weight_g", "Berat satu item (kg)", 1000000, 1000],
+        ["length_mm", "Panjang kemasan (cm)", 10000, 10],
+        ["width_mm", "Lebar kemasan (cm)", 10000, 10],
+        ["height_mm", "Tinggi kemasan (cm)", 10000, 10],
     ] as const;
     return (
         <>
@@ -122,64 +117,87 @@ export default function ProductForm({ product }: { product: Product | null }) {
                                 </Field>
                             </div>
                         </Section>
-                        <Section
-                            title="Ukuran kemasan"
-                            description="Ukur satu unit jual dalam kondisi siap dikirim, termasuk kemasannya."
+                        <details
+                            open={!product}
+                            className="rounded-xl border bg-card p-5"
                         >
-                            <div className="grid gap-5 sm:grid-cols-2">
-                                {sizes.map(([key, label, max]) => (
-                                    <Field
-                                        key={key}
-                                        id={key}
-                                        label={label}
-                                        error={form.errors[key]}
-                                    >
-                                        <Input
+                            <summary className="mb-5 cursor-pointer text-sm font-semibold">
+                                Detail pengiriman barang
+                            </summary>
+                            <Section
+                                title="Data kemasan untuk pengiriman"
+                                description="Ukur satu unit jual dalam kondisi siap dikirim, termasuk kemasannya."
+                            >
+                                <div className="grid gap-5 sm:grid-cols-2">
+                                    {sizes.map(([key, label, max, scale]) => (
+                                        <Field
+                                            key={key}
                                             id={key}
-                                            type="number"
-                                            required
-                                            min={1}
-                                            max={max}
-                                            step={1}
-                                            value={form.data[key]}
+                                            label={label}
+                                            error={form.errors[key]}
+                                        >
+                                            <Input
+                                                id={key}
+                                                type="number"
+                                                required
+                                                min={1 / scale}
+                                                max={max / scale}
+                                                step={1 / scale}
+                                                value={
+                                                    form.data[key] === ""
+                                                        ? ""
+                                                        : Number(
+                                                              form.data[key],
+                                                          ) / scale
+                                                }
+                                                onChange={(e) =>
+                                                    form.setData(
+                                                        key,
+                                                        e.target.value === ""
+                                                            ? ""
+                                                            : String(
+                                                                  Math.round(
+                                                                      Number(
+                                                                          e
+                                                                              .target
+                                                                              .value,
+                                                                      ) * scale,
+                                                                  ),
+                                                              ),
+                                                    )
+                                                }
+                                                aria-invalid={
+                                                    !!form.errors[key]
+                                                }
+                                            />
+                                        </Field>
+                                    ))}
+                                    <Field
+                                        id="handling_notes"
+                                        label="Catatan penanganan (opsional)"
+                                        error={form.errors.handling_notes}
+                                        className="sm:col-span-2"
+                                    >
+                                        <Textarea
+                                            id="handling_notes"
+                                            rows={3}
+                                            maxLength={1000}
+                                            value={form.data.handling_notes}
                                             onChange={(e) =>
                                                 form.setData(
-                                                    key,
+                                                    "handling_notes",
                                                     e.target.value,
                                                 )
                                             }
-                                            aria-invalid={!!form.errors[key]}
                                         />
                                     </Field>
-                                ))}
-                                <Field
-                                    id="handling_notes"
-                                    label="Catatan penanganan (opsional)"
-                                    error={form.errors.handling_notes}
-                                    className="sm:col-span-2"
-                                >
-                                    <Textarea
-                                        id="handling_notes"
-                                        rows={3}
-                                        maxLength={1000}
-                                        value={form.data.handling_notes}
-                                        onChange={(e) =>
-                                            form.setData(
-                                                "handling_notes",
-                                                e.target.value,
-                                            )
-                                        }
-                                    />
-                                </Field>
-                            </div>
-                            <p className="mt-5 rounded-lg bg-muted/60 p-3 text-xs leading-5 text-muted-foreground">
-                                10 mm = 1 cm.{" "}
-                                {volume > 0 && Number.isFinite(volume)
-                                    ? `Perkiraan volume: ${Math.ceil(volume / 1000).toLocaleString("id-ID")} cm³. `
-                                    : ""}
-                                Volume akhir dihitung otomatis saat disimpan.
-                            </p>
-                        </Section>
+                                </div>
+                                <p className="mt-5 text-xs leading-6 text-muted-foreground">
+                                    Detail ini dipakai untuk memeriksa kecocokan
+                                    kendaraan. Pelanggan melihat jumlah item.
+                                </p>
+                            </Section>
+                        </details>
                     </div>
                     <Section
                         title="Visibilitas katalog"

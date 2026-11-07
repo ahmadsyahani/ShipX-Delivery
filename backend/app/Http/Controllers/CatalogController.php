@@ -14,13 +14,17 @@ class CatalogController extends Controller
     public function __invoke(Request $request)
     {
         app(OrderLifecycleService::class)->expireAllDue();
-        $filters = $request->validate(['q' => ['nullable', 'string', 'max:100'], 'page' => ['sometimes', 'integer', 'min:1'], 'per_page' => ['sometimes', 'integer', 'min:1', 'max:100']]);
+        $filters = $request->validate(['q' => ['nullable', 'string', 'max:100'], 'category' => ['nullable', 'string', 'max:80'], 'page' => ['sometimes', 'integer', 'min:1'], 'per_page' => ['sometimes', 'integer', 'min:1', 'max:100']]);
+        $categories = Product::where('depot_id', 1)->where('is_active', true)->select('category')->distinct()->orderBy('category')->pluck('category');
         $products = app(InventoryService::class)->decorate(Product::where('depot_id', 1)->where('is_active', true));
         if ($q = $filters['q'] ?? null) {
             $products->where(fn ($builder) => $builder->where('name', 'like', '%'.$q.'%')->orWhere('category', 'like', '%'.$q.'%')->orWhere('sku', 'like', '%'.$q.'%'));
         }
+        if (isset($filters['category']) && $filters['category'] !== '') {
+            $products->where('category', $filters['category']);
+        }
 
         return ProductResource::collection($products->orderBy('name')->orderBy('id')->paginate($filters['per_page'] ?? 20)->withQueryString())
-            ->additional(['depot' => ['id' => '1', 'name' => DB::table('depots')->where('id', 1)->value('name')]]);
+            ->additional(['depot' => ['id' => '1', 'name' => DB::table('depots')->where('id', 1)->value('name')], 'categories' => $categories]);
     }
 }
