@@ -22,11 +22,13 @@ $original=config('database.connections.mysql.database');$qa='shipx_qa_ui_'.bin2h
 $cleanup=function()use(&$process,&$created,$qa,$original,$stopFile){
     if(is_resource($process)){proc_terminate($process);proc_close($process);$process=null;}
     $qaProofRoot=storage_path('framework/testing/ui-proof-qa-'.substr($qa,-20));
-    $resolvedProofs=realpath($qaProofRoot.'/delivery-proofs');
     $resolvedRoot=realpath($qaProofRoot);
-    if($resolvedProofs && $resolvedRoot && str_starts_with(str_replace('\\','/',$resolvedProofs),str_replace('\\','/',$resolvedRoot).'/')){
-        foreach(glob($resolvedProofs.'/*')?:[] as $file){
-            if(is_file($file)&&preg_match('/^[a-f0-9-]{36}\.(jpg|png)$/D',basename($file)))unlink($file);
+    foreach (['delivery-proofs', 'product-photos'] as $directory) {
+        $resolvedFiles=realpath($qaProofRoot.'/'.$directory);
+        if($resolvedFiles && $resolvedRoot && str_starts_with(str_replace('\\','/',$resolvedFiles),str_replace('\\','/',$resolvedRoot).'/')){
+            foreach(glob($resolvedFiles.'/*')?:[] as $file){
+                if(is_file($file)&&preg_match('/^[a-f0-9-]{36}\.(jpg|png|webp)$/D',basename($file)))unlink($file);
+            }
         }
     }
     DB::purge('mysql');config(['database.connections.mysql.database'=>$original]);

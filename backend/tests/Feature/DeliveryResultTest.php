@@ -95,6 +95,189 @@ class DeliveryResultTest extends TestCase
         $this->withToken($this->courier->createToken('QA')->plainTextToken);
     }
 
+    private function reconciliationData(array $overrides = []): array
+    {
+        return array_replace([
+            'idempotency_key' => Str::uuid()->toString(), 'lock_version' => $this->trip->refresh()->lock_version,
+            'actual_cash_rp' => 48000, 'discrepancy_reason' => null, 'received_and_approved' => true,
+            'items' => array_map(fn ($p, $i) => ['product_id' => $p->id, 'available_quantity' => $i === 0 ? 2 : 1, 'quarantine_quantity' => 0, 'discrepancy_reason' => null], $this->products, array_keys($this->products)),
+        ], $overrides);
+    }
+
+    private function readyForReconciliation(): void
+    {
+        $photo = $this->photo()->assertCreated()->json('data.id');
+        $this->recordResult('delivered', overrides: ['proof_upload_id' => $photo])->assertOk();
+        $this->recordResult('failed', 1)->assertOk();
+        $this->flushHeaders();
+        $this->actingAs($this->admin, 'web');
+    }
+
+    public function test_reconciliation_returns_each_sku_records_cod_and_releases_claims_once(): void
+    {
+        $this->readyForReconciliation();
+        $data = $this->reconciliationData();
+        $url = '/admin/trips/'.$this->trip->id.'/reconcile';
+        $this->post($url, $data)->assertRedirect('/admin/trips/'.$this->trip->id);
+        $this->post($url, $data)->assertRedirect();
+        $this->assertDatabaseCount('trip_reconciliations', 1);
+        $this->assertDatabaseCount('reconciliation_items', 4);
+        $this->assertDatabaseHas('trip_reconciliations', ['expected_cash_rp' => 48000, 'actual_cash_rp' => 48000, 'cash_difference_rp' => 0, 'approved_by' => $this->admin->id]);
+        $this->assertSame('completed', $this->trip->refresh()->status);
+        $this->assertNotNull($this->trip->actual_return_at);
+        foreach (['active_order_allocations', 'courier_trip_locks', 'vehicle_trip_locks'] as $table) {
+            $this->assertDatabaseCount($table, 0);
+        }
+        foreach ($this->products as $i => $p) {
+            $this->assertDatabaseHas('inventory_accounts', ['product_id' => $p->id, 'owner_key' => 'depot', 'stock_state' => 'available', 'balance_quantity' => $i === 0 ? 18 : 19]);
+            $this->assertSame(0, (int) InventoryAccount::where('owner_key', 'trip:'.$this->trip->id)->where('product_id', $p->id)->sum('balance_quantity'));
+        }
+        $this->assertSame(1, DB::table('inventory_transactions')->where('event_key', 'reconciliation:'.$this->trip->id)->count());
+        $this->assertSame(48000, (int) DB::table('payment_collections')->sum('amount_rp'));
+        $this->get('/admin/trips?status=completed')->assertOk();
+        $this->get('/admin/trips/'.$this->trip->id)->assertOk();
+        $this->post($url, array_replace($data, ['idempotency_key' => Str::uuid()->toString(), 'lock_version' => $this->trip->lock_version]))->assertStatus(409);
+        $this->post($url, array_replace($data, ['actual_cash_rp' => 1]))->assertStatus(409);
+    }
+
+    public function test_stock_and_cash_discrepancies_require_reasons_and_approval_before_any_mutation(): void
+    {
+        $this->readyForReconciliation();
+        $url = '/admin/trips/'.$this->trip->id.'/reconcile';
+        $data = $this->reconciliationData(['actual_cash_rp' => 47000]);
+        $this->post($url, $data)->assertStatus(409);
+        $data['idempotency_key'] = Str::uuid()->toString();
+        $data['discrepancy_reason'] = 'Setoran kurang seribu, ditinjau admin';
+        $data['items'][0]['available_quantity'] = 1;
+        $data['items'][0]['quarantine_quantity'] = 1;
+        $this->post($url, $data)->assertStatus(409);
+        $this->assertDatabaseCount('trip_reconciliations', 0);
+        $this->assertDatabaseCount('courier_trip_locks', 1);
+        $data['idempotency_key'] = Str::uuid()->toString();
+        $data['items'][0]['discrepancy_reason'] = 'Satu kemasan rusak saat kembali';
+        $this->post($url, array_replace($data, ['received_and_approved' => false]))->assertSessionHasErrors('received_and_approved');
+        $this->post($url, $data)->assertRedirect();
+        $this->assertDatabaseHas('trip_reconciliations', ['cash_difference_rp' => -1000, 'discrepancy_reason' => $data['discrepancy_reason']]);
+        $this->assertDatabaseHas('inventory_accounts', ['product_id' => $this->products[0]->id, 'owner_key' => 'depot', 'stock_state' => 'quarantine', 'balance_quantity' => 1]);
+        $this->assertDatabaseHas('reconciliation_items', ['product_id' => $this->products[0]->id, 'stock_state' => 'available', 'difference' => -1]);
+        $this->assertDatabaseHas('reconciliation_items', ['product_id' => $this->products[0]->id, 'stock_state' => 'quarantine', 'expected_quantity' => 0, 'difference' => 1]);
+        $this->assertSame(48000, (int) DB::table('payment_collections')->sum('amount_rp'));
+    }
+
+    public function test_reconciliation_rejects_missing_duplicate_foreign_items_stale_versions_and_nonfinal_trip(): void
+    {
+        $this->flushHeaders();
+        $this->actingAs($this->admin, 'web');
+        $url = '/admin/trips/'.$this->trip->id.'/reconcile';
+        $this->post($url, $this->reconciliationData())->assertStatus(409);
+        $this->app['auth']->forgetGuards();
+        $this->flushHeaders();
+        $this->withToken($this->courier->createToken('QA')->plainTextToken);
+        $this->readyForReconciliation();
+        $data = $this->reconciliationData();
+        $this->post($url, array_replace($data, ['lock_version' => 0]))->assertStatus(409);
+        $this->post($url, $this->reconciliationData(['items' => [$data['items'][0]]]))->assertStatus(409);
+        $this->post($url, $this->reconciliationData(['items' => [$data['items'][0], $data['items'][0]]]))->assertSessionHasErrors('items.0.product_id');
+        $data['items'][0]['product_id'] = 999999;
+        $this->post($url, $this->reconciliationData(['items' => $data['items']]))->assertStatus(409);
+        $this->post($url, $this->reconciliationData(['actual_cash_rp' => -1]))->assertSessionHasErrors('actual_cash_rp');
+        $this->post($url, $this->reconciliationData(['approved_by' => $this->customer->id]))->assertSessionHasErrors('approved_by');
+        $this->assertDatabaseCount('trip_reconciliations', 0);
+        $this->assertSame('awaiting_reconciliation', $this->trip->refresh()->status);
+    }
+
+    public function test_excess_missing_items_and_cash_surplus_are_audited_without_modifying_delivery_results(): void
+    {
+        $this->readyForReconciliation();
+        $extra = $this->products[0]->replicate();
+        $extra->sku = 'EXTRA-RETURN';
+        $extra->is_active = false;
+        $extra->save();
+        $data = $this->reconciliationData(['actual_cash_rp' => 49000, 'discrepancy_reason' => 'Kelebihan uang ditinjau']);
+        $data['items'][0]['available_quantity'] = 0;
+        $data['items'][0]['discrepancy_reason'] = 'Barang hilang';
+        $data['items'][] = ['product_id' => $extra->id, 'available_quantity' => 3, 'quarantine_quantity' => 0, 'discrepancy_reason' => 'Barang tambahan ikut kembali'];
+        $this->post('/admin/trips/'.$this->trip->id.'/reconcile', $data)->assertRedirect();
+        $this->assertDatabaseHas('reconciliation_items', ['product_id' => $extra->id, 'stock_state' => 'available', 'expected_quantity' => 0, 'actual_quantity' => 3, 'difference' => 3]);
+        $this->assertDatabaseHas('inventory_accounts', ['product_id' => $extra->id, 'owner_key' => 'depot', 'balance_quantity' => 3]);
+        $this->assertDatabaseHas('trip_reconciliations', ['cash_difference_rp' => 1000]);
+        $this->assertDatabaseCount('delivery_results', 2);
+        $this->assertDatabaseHas('orders', ['id' => $this->orders[1]->id, 'status' => 'failed', 'payment_status' => 'unpaid']);
+    }
+
+    public function test_only_active_admin_can_close_and_courier_can_read_only_their_completed_receipt(): void
+    {
+        $this->readyForReconciliation();
+        $url = '/admin/trips/'.$this->trip->id.'/reconcile';
+        foreach ([$this->courier, $this->customer, User::factory()->create(['role' => 'admin', 'is_active' => false])] as $actor) {
+            $this->actingAs($actor, 'web')->post($url, $this->reconciliationData())->assertForbidden();
+        }
+        $this->actingAs($this->admin, 'web')->post($url, $this->reconciliationData())->assertRedirect();
+        $this->app['auth']->forgetGuards();
+        $this->withToken($this->courier->createToken('QA')->plainTextToken);
+        $this->getJson('/api/v1/courier/trips')->assertJsonCount(0, 'data')->assertJsonCount(1, 'recent_completed');
+        $this->getJson('/api/v1/courier/trips/'.$this->trip->id)->assertOk()->assertJsonPath('data.status', 'completed')->assertJsonPath('data.can_start', false)->assertJsonPath('data.reconciliation.record.actual_cash_rp', 48000)->assertJsonPath('data.reconciliation.record.trip_id', (string) $this->trip->id)->assertJsonPath('data.reconciliation.record.items.0.product_id', (string) $this->products[0]->id)->assertJsonPath('data.stops.0.can_record_result', false);
+        $this->app['auth']->forgetGuards();
+        $this->withToken(User::factory()->create(['role' => 'courier'])->createToken('QA')->plainTextToken);
+        $this->getJson('/api/v1/courier/trips/'.$this->trip->id)->assertNotFound();
+    }
+
+    public function test_all_failed_returns_entire_load_with_zero_cash(): void
+    {
+        $this->recordResult('failed')->assertOk();
+        $this->recordResult('failed', 1)->assertOk();
+        $this->flushHeaders();
+        $this->actingAs($this->admin, 'web');
+        $data = $this->reconciliationData(['actual_cash_rp' => 0]);
+        $data['items'][0]['available_quantity'] = 4;
+        $data['items'][1]['available_quantity'] = 2;
+        $this->post('/admin/trips/'.$this->trip->id.'/reconcile', $data)->assertRedirect();
+        $this->assertDatabaseHas('trip_reconciliations', ['expected_cash_rp' => 0, 'actual_cash_rp' => 0]);
+        foreach ($this->products as $product) {
+            $this->assertDatabaseHas('inventory_accounts', ['product_id' => $product->id, 'owner_key' => 'depot', 'stock_state' => 'available', 'balance_quantity' => 20]);
+        }
+    }
+
+    public function test_all_delivered_closes_with_zero_returned_items_and_full_cash(): void
+    {
+        foreach ([0, 1] as $index) {
+            $proof = $this->photo($index)->assertCreated()->json('data.id');
+            $this->recordResult('delivered', $index, ['proof_upload_id' => $proof])->assertOk();
+        }
+        $this->flushHeaders();
+        $this->actingAs($this->admin, 'web');
+        $data = $this->reconciliationData(['actual_cash_rp' => 96000]);
+        foreach ($data['items'] as &$row) {
+            $row['available_quantity'] = 0;
+        }
+        unset($row);
+        $this->post('/admin/trips/'.$this->trip->id.'/reconcile', $data)->assertRedirect();
+        $this->assertDatabaseHas('trip_reconciliations', ['expected_cash_rp' => 96000, 'actual_cash_rp' => 96000]);
+        $this->assertSame(0, (int) DB::table('reconciliation_items')->sum('actual_quantity'));
+        $this->assertSame(0, DB::table('inventory_entries')->join('inventory_transactions', 'inventory_transactions.id', '=', 'inventory_entries.inventory_transaction_id')->where('kind', 'reconciliation')->count());
+    }
+
+    public function test_failure_after_stock_mutation_rolls_back_receipt_ledger_and_claim_release(): void
+    {
+        $this->readyForReconciliation();
+        $before = InventoryAccount::orderBy('id')->get()->toArray();
+        DB::unprepared("CREATE TRIGGER qa_reconciliation_failure BEFORE INSERT ON trip_reconciliations BEGIN SELECT RAISE(ABORT, 'QA forced failure'); END");
+        try {
+            app(\App\Services\TripReconciliationService::class)->close($this->admin->id, $this->trip->id, $this->reconciliationData());
+            $this->fail('Expected forced database failure.');
+        } catch (\Illuminate\Database\QueryException $error) {
+            $this->assertStringContainsString('QA forced failure', $error->getMessage());
+        } finally {
+            DB::unprepared('DROP TRIGGER qa_reconciliation_failure');
+        }
+        $this->assertSame($before, InventoryAccount::orderBy('id')->get()->toArray());
+        $this->assertDatabaseCount('trip_reconciliations', 0);
+        $this->assertSame(0, DB::table('inventory_transactions')->where('kind', 'reconciliation')->count());
+        $this->assertDatabaseCount('courier_trip_locks', 1);
+        $this->assertSame('awaiting_reconciliation', $this->trip->refresh()->status);
+        $this->assertNull($this->trip->actual_return_at);
+    }
+
     private function stop(int $index = 0): object
     {
         return DB::table('trip_stops')->where('trip_id', $this->trip->id)->orderBy('sequence_no')->get()[$index];

@@ -6,6 +6,7 @@ import 'shopping_test.dart' show CommerceSession, MemoryPending, product;
 
 class CartSession extends CommerceSession {
   bool stockAvailable = true;
+  int unitPrice = 15000;
   @override
   Future<Map<String, dynamic>> commerceRequest(
     String method,
@@ -17,11 +18,17 @@ class CartSession extends CommerceSession {
     if (path == '/order-quotes') {
       return {
         'items': [
-          {'quantity': 1, 'name': 'Barang 1', 'line_total_rp': 15000},
+          {
+            'product_id': '1',
+            'unit_price_rp': unitPrice,
+            'quantity': 1,
+            'name': 'Barang 1',
+            'line_total_rp': unitPrice,
+          },
         ],
-        'subtotal_rp': 15000,
+        'subtotal_rp': unitPrice,
         'delivery_fee_rp': 3000,
-        'total_rp': 18000,
+        'total_rp': unitPrice + 3000,
         'total_weight_g': 1000,
         'total_volume_cm3': 1000,
         'stock_available_now': stockAvailable,
@@ -71,11 +78,11 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(find.text('Hitung total terbaru'), 200);
+    await tester.scrollUntilVisible(find.text('Hitung total'), 200);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Hitung total terbaru'));
+    await tester.tap(find.text('Hitung total'));
     await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(find.text('Lanjut buat pesanan COD'), 200);
+    await tester.scrollUntilVisible(find.textContaining('Total COD'), 200);
     await tester.pumpAndSettle();
     return state;
   }
@@ -87,7 +94,7 @@ void main() {
       final state = await showCart(tester, session);
       expect(session.requests, isEmpty);
       expect(find.text('Total COD Rp18.000'), findsOneWidget);
-      await tester.tap(find.text('Lanjut buat pesanan COD'));
+      await tester.tap(find.text('Pesan sekarang'));
       await tester.pumpAndSettle();
       expect(session.requests, isEmpty);
       await tester.tap(find.widgetWithText(FilledButton, 'Buat pesanan'));
@@ -104,7 +111,7 @@ void main() {
   ) async {
     final session = CartSession();
     final state = await showCart(tester, session);
-    await tester.tap(find.text('Lanjut buat pesanan COD'));
+    await tester.tap(find.text('Pesan sekarang'));
     await tester.pumpAndSettle();
     state.quantity('1', 2);
     await tester.pump();
@@ -126,9 +133,28 @@ void main() {
     final session = CartSession()..stockAvailable = false;
     await showCart(tester, session);
     final button = tester.widget<FilledButton>(
-      find.widgetWithText(FilledButton, 'Lanjut buat pesanan COD'),
+      find.widgetWithText(FilledButton, 'Pesan sekarang'),
     );
     expect(button.onPressed, isNull);
     expect(session.requests, isEmpty);
   });
+  testWidgets(
+    'server price replaces catalog estimate while checkout dock stays visible',
+    (tester) async {
+      final session = CartSession()..unitPrice = 17000;
+      final state = await showCart(tester, session);
+      expect(find.text('Total COD Rp20.000'), findsOneWidget);
+      expect(find.text('Pesan sekarang').hitTestable(), findsOneWidget);
+      await tester.drag(
+        find.byKey(const ValueKey('cart-content')),
+        const Offset(0, 700),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Pesan sekarang').hitTestable(), findsOneWidget);
+      expect(find.text('Rp17.000'), findsOneWidget);
+      expect(session.requests, isEmpty);
+      await tester.pumpWidget(const SizedBox());
+      state.dispose();
+    },
+  );
 }

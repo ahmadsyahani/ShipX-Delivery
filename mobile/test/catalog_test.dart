@@ -329,7 +329,7 @@ void main() {
       await tester.tap(find.byTooltip('Tambah Air mineral'));
       await tester.pumpAndSettle();
       expect(shopping.count, 1);
-      expect(find.text('Lihat keranjang (1 barang)'), findsOneWidget);
+      expect(find.byKey(const ValueKey('catalog-checkout')), findsOneWidget);
       expect(
         tester
             .widget<IconButton>(
@@ -349,7 +349,7 @@ void main() {
             .onPressed,
         isNull,
       );
-      await tester.tap(find.text('Lihat keranjang (1 barang)'));
+      await tester.tap(find.byKey(const ValueKey('catalog-checkout')));
       expect(opened, isTrue);
       await tester.pumpWidget(const SizedBox.shrink());
       shopping.dispose();

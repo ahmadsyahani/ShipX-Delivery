@@ -171,11 +171,30 @@ void main() {
         ),
       );
       await snapshot('customer');
+      await tester.scrollUntilVisible(
+        find.byTooltip('Tambah Air mineral kemasan'),
+        160,
+        scrollable: find
+            .descendant(
+              of: find.byKey(const ValueKey('catalog-products')),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+      await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('Tambah Air mineral kemasan'));
       await tester.pumpAndSettle();
-      expect(find.text('Lihat keranjang (1 barang)'), findsOneWidget);
+      expect(find.byKey(const ValueKey('catalog-checkout')), findsOneWidget);
       expect(tester.takeException(), isNull);
       await snapshot('customer-cart');
+      if (size.width == 320) {
+        tester.view.viewInsets = const FakeViewPadding(bottom: 280);
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        expect(find.byKey(const ValueKey('catalog-checkout')), findsNothing);
+        tester.view.resetViewInsets();
+        await tester.pumpAndSettle();
+      }
       for (final label in ['Pengiriman', 'Keranjang', 'Akun']) {
         await tester.tap(
           find.descendant(
@@ -223,7 +242,7 @@ void main() {
           await snapshot('pengiriman-selected');
           await tester.tap(find.text('Lanjut ke keranjang'));
           await tester.pumpAndSettle();
-          expect(find.text('Keranjang kamu'), findsOneWidget);
+          expect(find.text('Pesanan'), findsOneWidget);
         }
         if (label == 'Keranjang') {
           final scroll = find
@@ -233,22 +252,22 @@ void main() {
               )
               .first;
           await tester.scrollUntilVisible(
-            find.text('Hitung total terbaru'),
+            find.text('Hitung total'),
             180,
             scrollable: scroll,
           );
           await tester.pumpAndSettle();
-          await tester.tap(find.text('Hitung total terbaru'));
+          await tester.tap(find.text('Hitung total'));
           await tester.pumpAndSettle();
           await tester.scrollUntilVisible(
-            find.text('Lanjut buat pesanan COD'),
+            find.text('Pesan sekarang'),
             180,
             scrollable: scroll,
           );
           await tester.pumpAndSettle();
           await snapshot('checkout');
           expect(tester.takeException(), isNull);
-          await tester.tap(find.text('Lanjut buat pesanan COD'));
+          await tester.tap(find.text('Pesan sekarang'));
           await tester.pumpAndSettle();
           expect(find.text('Buat pesanan COD?'), findsOneWidget);
           await snapshot('checkout-confirm');
@@ -291,6 +310,110 @@ void main() {
       status.dispose();
     });
   }
+  testWidgets(
+    'delivery sheet commits only confirmed selection and retains a valid choice on reopen',
+    (tester) async {
+      final session = _CustomerSession();
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.theme,
+          home: RoleHome(
+            session: session,
+            pendingStoreFactory: (_) => MemoryPending(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final shopping = tester
+          .widget<CatalogPage>(find.byType(CatalogPage))
+          .shopping!;
+      await tester.tap(find.text('Pilih alamat pengiriman'));
+      await tester.pumpAndSettle();
+      expect(find.byType(DeliveryPage), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.text('Pilih alamat'),
+        180,
+        scrollable: find
+            .descendant(
+              of: find.byType(DeliveryPage),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Pilih alamat'));
+      await tester.scrollUntilVisible(
+        find.text('12:00\u201314:00'),
+        180,
+        scrollable: find
+            .descendant(
+              of: find.byType(DeliveryPage),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('12:00\u201314:00'));
+      await tester.pumpAndSettle();
+      expect(shopping.address, isNull);
+      expect(shopping.slot, isNull);
+      await tester.tap(find.byTooltip('Tutup pilihan pengiriman'));
+      await tester.pumpAndSettle();
+      expect(shopping.address, isNull);
+      await tester.tap(find.text('Pilih alamat pengiriman'));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.text('Pilih alamat'),
+        180,
+        scrollable: find
+            .descendant(
+              of: find.byType(DeliveryPage),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Pilih alamat'));
+      await tester.scrollUntilVisible(
+        find.text('12:00\u201314:00'),
+        180,
+        scrollable: find
+            .descendant(
+              of: find.byType(DeliveryPage),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('12:00\u201314:00'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Gunakan alamat & jadwal'));
+      await tester.pumpAndSettle();
+      expect(shopping.address?['id'], '1');
+      expect(shopping.slot?['timezone'], 'Asia/Jayapura');
+      expect(shopping.lastOrder, isNull);
+      final fingerprint = shopping.fingerprint;
+      await tester.tap(find.text('Rumah'));
+      await tester.pumpAndSettle();
+      expect(find.text('Gunakan alamat & jadwal'), findsOneWidget);
+      await tester.tap(find.byTooltip('Tutup pilihan pengiriman'));
+      await tester.pumpAndSettle();
+      expect(shopping.fingerprint, fingerprint);
+      shopping.pending = {
+        'key': '00000000-0000-4000-8000-000000000001',
+        'kind': 'create',
+        'payload': <String, dynamic>{},
+        'created_at': DateTime.now().toUtc().toIso8601String(),
+      };
+      shopping.notifyListeners();
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Rumah'));
+      await tester.pumpAndSettle();
+      expect(find.byType(DeliveryPage), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+      session.dispose();
+    },
+  );
 }
 
 class _LongTripSession extends TripSession {

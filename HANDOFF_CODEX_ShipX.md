@@ -1,5 +1,39 @@
 # Handoff ShipX untuk Codex
 
+## Integrasi seluruh checkpoint ke main — 10 November 2026
+
+Pengguna meminta seluruh perubahan aplikasi digabungkan ke main. Paket ini mencakup rekonsiliasi trip dan receipt, perapian seluruh storefront Flutter, foto produk admin/mobile, dropdown kategori dan SKU otomatis. README diselaraskan dengan fitur yang tersedia. Catatan belum commit/push pada checkpoint sebelumnya merupakan histori. Identitas Git pengguna dan atribusi Claude pada commit README sebelumnya dipertahankan. Commit integrasi menyertakan atribusi Codex.
+
+Verifikasi ulang mencakup 110 tes backend/1657 assertions,75 tes Flutter, analyzer, TypeScript/build web, serta race MySQL start/hasil/rekonsiliasi dan rollback/reapply migration. Delapan dari sembilan skenario browser lolos pada suite awal. Skenario trip mengalami timeout aset JavaScript di server QA lokal, kemudian lolos saat diulang tanpa perubahan source. Uji fisik HP untuk APK foto produk belum diulang. File patch README0001 merupakan salinan perubahan yang sudah tersimpan dalam riwayat dan dipertahankan sebagai arsip lokal. .env memiliki SHA256DBE59869C14B1BC0436EA8085AA62B37D8860FB6395E8995AF0C37D81CA7D24C.
+
+## Dropdown kategori dan SKU otomatis — 9 November 2026
+
+Form produk admin memakai dropdown kategori umum serta kategori produk lama termasuk nonaktif, dengan pilihan tambah kategori baru. SKU create yang kosong dibuat server SHX- + ULID, input manual tetap tersedia. Edit tetap menampilkan kode tersimpan dan mewajibkan kode valid. 110 tes backend/1657 assertions, sembilan skenario browser dan TypeScript/build web lolos. Tidak ada migration. .env identik. Perubahan lokal develop.
+
+## Foto produk admin dan Flutter — 9 November 2026
+
+Admin tambah/edit produk memiliki upload satu foto opsional, preview, ganti dan hapus saat simpan. JPEG/PNG/WebP maksimal2MiB dan4096px. Migration000011 sudah Ran di MySQL. API menambah photo_url nullable relatif origin dan route foto katalog publik. Flutter ProductArt memakai host API aktif untuk foto katalog/detail/keranjang, serta fallback ikon kategori. File lama dihapus sesudah commit, file baru dibersihkan saat transaksi gagal dan konflik versi ditolak sebelum menulis file. Detail kontrak di API_PHASE_1.md bagian Foto produk.
+
+108 tes backend/1616 assertions dan75 tes Flutter lolos, analyzer serta TypeScript bersih, build web/APK berhasil. Sembilan skenario browser lolos, termasuk unggah/ganti/hapus foto dan preview390px. HP belum terdeteksi sehingga APK baru belum dipasang. .env tetap identik SHA256DBE59869C14B1BC0436EA8085AA62B37D8860FB6395E8995AF0C37D81CA7D24C. Produk bisnis belum diberi foto uji. Perubahan lokal develop.
+
+## Ikon produk — 9 November 2026
+
+Pengguna memilih ikon sederhana untuk produk. ProductArt sekarang memakai ikon Material outline sesuai kategori dengan warna teal dan ukuran responsif. Komponen ini dipakai pada katalog, keranjang, banner pengantaran dan keadaan kosong. Label aksesibilitas menjadi Ikon kategori. Catatan ilustrasi Canvas pada checkpoint sebelumnya merupakan histori.
+
+18 tes katalog/keranjang/layout lolos, analyzer bersih dan APK berhasil dibangun. APK sudah diperbarui di HP I2405 melalui adb install -r dan ShipX dibuka. Reverse8000 aktif.
+
+## Perapian layout Pengiriman — 9 November 2026
+
+Halaman Pengiriman kini menempatkan alamat di atas, pemilih tanggal satu baris penuh dengan nama bulan Indonesia, kemudian jam yang tersedia. Informasi depot/ongkir diringkas di bawah. Tombol lanjut menetap dan aktif setelah alamat serta slot terpilih. Tampilan tanggal menggantikan kode zona waktu. 72 tes Flutter, analyzer dan build APK lolos. APK diperbarui melalui adb install -r di HP I2405 dan dibuka. Layout baru serta dialog tanggal sudah terlihat pada perangkat. Laravel/MySQL aktif dan reverse8000 tersedia saat verifikasi. Perubahan lokal develop.
+
+## Belanja dan checkout dari referensi — 8 November 2026
+
+Baca [MOBILE_STOREFRONT_CHECKPOINT.md](docs/MOBILE_STOREFRONT_CHECKPOINT.md). Referensi screenshot pengguna diterapkan pada katalog kategori vertikal, ringkasan pengiriman, ilustrasi transparan dan bar Checkout; keranjang memakai total/CTA menetap, alamat/jadwal lewat lembar bawah dengan pilihan sementara dan konfirmasi, Pengiriman/Akun diringankan. Quote/harga server, fingerprint, pending/idempotency, COD dan batas stok tetap berjalan. 72 tes Flutter, analyzer dan APK lolos; preview font asli 320px/teks1,5, 390px, 820px serta keyboard diverifikasi. HP belum tersambung saat APK siap, belum dipasang. .env identik, web/backend/data tidak diubah oleh UI ini. Rekonsiliasi sebelumnya tetap ada; seluruh pekerjaan masih lokal develop, belum commit/push/main. Koneksi HP terakhir sebelumnya sudah pulih setelah adb reverse dan pengguna mengonfirmasi bisa masuk; pemetaan perlu diulang saat kabel terputus.
+
+## Rekonsiliasi dan penutupan trip — 8 November 2026
+
+Baca [RECONCILIATION_CHECKPOINT.md](docs/RECONCILIATION_CHECKPOINT.md). Admin menerima barang layak jual/karantina per SKU dan setoran COD, menyetujui alasan selisih lalu menutup trip atomik dengan ledger/receipt/audit dan pelepasan claims. Migration 000010 sudah Ran tanpa reset/.env berubah. Flutter menampilkan penyerahan dan receipt final; API menambah recent_completed maksimal lima milik sendiri dan detail completed tetap tersedia. 100 backend/1552 assertions, 70 Flutter, delapan browser, analyzer, TypeScript/build/APK serta race MySQL rekonsiliasi lolos; kontrak ID receipt string diuji terpisah. Perubahan lokal develop belum commit/push. HP belum terdeteksi. Berikutnya navigasi/optimasi/pilot. User menanyakan hosting: Render Docker memungkinkan; InfinityFree gratis membatasi akses API Flutter. Belum meminta deployment; jangan mengubah .env produksi atau membuat layanan berbayar tanpa instruksi.
+
 ## Lokasi perangkat dan label item — 7 November 2026
 
 Baca [LOCATION_AND_SIMPLE_LABELS_CHECKPOINT.md](docs/LOCATION_AND_SIMPLE_LABELS_CHECKPOINT.md). Pengguna memilih semua barang tampil sebagai item. Form alamat Flutter memakai GPS/peta tanpa input koordinat; geolocator14.1.2 dan izin foreground coarse/fine ditambahkan. Depot web memakai Leaflet1.9.4/pin/lokasi browser. Tidak ada pengambilan lokasi otomatis atau pelacakan background. Jadwal tidak menampilkan IANA; semua konversi zona depot tetap utuh. Ukuran teknis hilang dari layar utama, admin memakai detail kg/cm dan kapasitas kendaraan hasil ukuran ruang, lalu mengirim satuan API lama. Data bisnis, riwayat unit_label, .env dan kontrak tidak ditulis ulang. 66 tes Flutter dan analyzer lolos, build web/APK berhasil. HP sudah tidak terdeteksi saat APK siap; pemasangan GPS dan izin aktual menyusul.

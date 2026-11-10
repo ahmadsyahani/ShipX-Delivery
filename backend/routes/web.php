@@ -17,6 +17,7 @@ Route::get('/', function () {
 });
 
 Route::get('/admin/login', fn () => Inertia::render('Admin/Login'))->name('login');
+Route::get('/product-photos/{file}', [\App\Http\Controllers\ProductPhotoController::class, 'show'])->where('file', '[a-f0-9-]{36}\.(jpg|png|webp)')->name('product.photo');
 Route::post('/admin/login', [AdminSessionController::class, 'store'])->middleware('throttle:login');
 Route::middleware(['auth:web', 'active.role:admin'])->prefix('admin')->group(function (): void {
     Route::get('/', AdminDashboardController::class)->name('admin.home');
@@ -38,4 +39,5 @@ Route::middleware(['auth:web', 'active.role:admin'])->prefix('admin')->group(fun
     Route::resource('trips', \App\Http\Controllers\AdminTripController::class)->only(['index', 'create', 'store', 'show', 'edit', 'update'])->names('admin.trips');
     Route::post('trips/{trip}/{action}', [\App\Http\Controllers\AdminTripController::class, 'action'])->where('action', 'assign|reopen|cancel')->name('admin.trips.action');
     Route::post('trips/{trip}/departure-review', [\App\Http\Controllers\AdminTripController::class, 'review'])->name('admin.trips.review');
+    Route::post('trips/{trip}/reconcile', [\App\Http\Controllers\AdminTripController::class, 'reconcile'])->name('admin.trips.reconcile');
 });

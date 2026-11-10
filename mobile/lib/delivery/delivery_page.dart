@@ -35,10 +35,12 @@ class DeliveryPage extends StatefulWidget {
     required this.session,
     this.shopping,
     this.openCart,
+    this.continueLabel = 'Lanjut ke keranjang',
   });
   final AuthSession session;
   final ShoppingState? shopping;
   final VoidCallback? openCart;
+  final String continueLabel;
   @override
   State<DeliveryPage> createState() => _DeliveryPageState();
 }
@@ -82,6 +84,9 @@ class _DeliveryPageState extends State<DeliveryPage> {
   @override
   void initState() {
     super.initState();
+    _selectedAddress = widget.shopping?.address?['id'];
+    _selectedSlot = widget.shopping?.slot?['id'];
+    _date = widget.shopping?.slot?['service_date'];
     _load();
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
@@ -116,6 +121,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
   }
 
   Future<void> _load() async {
+    final previousSlot = widget.shopping?.slot;
     ++_generation;
     final sequence = ++_loadSequence;
     setState(() {
@@ -162,7 +168,16 @@ class _DeliveryPageState extends State<DeliveryPage> {
         widget.shopping!.chooseAddress(matches.isEmpty ? null : matches.first);
         widget.shopping!.chooseSlot(null);
       }
-      if (_depot!['configured'] == true) await _loadSlots();
+      if (_depot!['configured'] == true) {
+        await _loadSlots();
+        if (!mounted || sequence != _loadSequence) return;
+        if (previousSlot != null && _selectedAddress != null && !_locked) {
+          final matches = _slots.where(
+            (slot) => slot['id'] == previousSlot['id'] && _open(slot),
+          );
+          if (matches.isNotEmpty) _chooseSlot(matches.first);
+        }
+      }
     } catch (_) {
       if (mounted && sequence == _loadSequence) {
         setState(
@@ -334,72 +349,110 @@ class _DeliveryPageState extends State<DeliveryPage> {
 
   Widget _addressTile(Map<String, dynamic> address) {
     final selected = _selectedAddress == address['id'];
-    return AppPanel(
-      color: selected ? AppColors.primaryLighter : Colors.white,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          AppSectionTitle(
-            title: address['label'],
-            icon: Icons.home_outlined,
-            action: selected
-                ? const Icon(
-                    Icons.check_circle_rounded,
-                    color: AppColors.primary,
-                    size: 22,
-                  )
-                : null,
-          ),
-          Text(
-            address['recipient_name'],
-            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            address['phone'],
-            style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            address['address_text'],
-            style: const TextStyle(
-              fontSize: 13,
-              color: AppColors.textBody,
-              height: 1.6,
+    return Material(
+      color: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(
+          color: selected ? AppColors.primary : Colors.transparent,
+          width: 1.2,
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(18, 18, 14, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(top: 3),
+                  child: Icon(
+                    selected
+                        ? Icons.radio_button_checked_rounded
+                        : Icons.radio_button_off_rounded,
+                    size: 21,
+                    color: selected ? AppColors.primary : AppColors.textMuted,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        address['label'],
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.4,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        address['address_text'],
+                        style: const TextStyle(
+                          fontSize: 13,
+                          height: 1.6,
+                          color: AppColors.textBody,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '${address['recipient_name']} · ${address['phone']}',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          height: 1.5,
+                          color: AppColors.textMuted,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
-          ),
-          if (address['within_service_area'] != true)
-            const Padding(
-              padding: EdgeInsets.only(top: 12),
-              child: InfoBanner(
-                message: 'Di luar wilayah layanan saat ini. Edit pin alamat.',
-                color: AppColors.error,
-                backgroundColor: AppColors.errorBg,
+            if (address['within_service_area'] != true)
+              const Padding(
+                padding: EdgeInsets.only(top: 12),
+                child: InfoBanner(
+                  message: 'Di luar wilayah layanan saat ini. Edit pin alamat.',
+                  color: AppColors.error,
+                  backgroundColor: AppColors.errorBg,
+                ),
               ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 4,
+              runSpacing: 4,
+              alignment: WrapAlignment.end,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                TextButton(
+                  onPressed: _locked ? null : () => _delete(address),
+                  child: const Text(
+                    'Hapus',
+                    style: TextStyle(color: AppColors.textMuted),
+                  ),
+                ),
+                TextButton(
+                  onPressed: _locked ? null : () => _edit(address),
+                  child: const Text('Edit'),
+                ),
+                FilledButton.tonal(
+                  style: FilledButton.styleFrom(
+                    shape: const StadiumBorder(),
+                    minimumSize: const Size(48, 40),
+                  ),
+                  onPressed: address['within_service_area'] == true && !_locked
+                      ? () => _chooseAddress(address)
+                      : null,
+                  child: Text(selected ? 'Dipilih' : 'Pilih alamat'),
+                ),
+              ],
             ),
-          const SizedBox(height: 14),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              FilledButton.tonal(
-                onPressed: address['within_service_area'] == true && !_locked
-                    ? () => _chooseAddress(address)
-                    : null,
-                child: Text(selected ? 'Dipilih' : 'Pilih alamat'),
-              ),
-              TextButton(
-                onPressed: _locked ? null : () => _edit(address),
-                child: const Text('Edit'),
-              ),
-              TextButton(
-                onPressed: _locked ? null : () => _delete(address),
-                child: const Text('Hapus'),
-              ),
-            ],
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -562,249 +615,353 @@ class _DeliveryPageState extends State<DeliveryPage> {
         ),
       );
     }
-    return RefreshIndicator(
-      onRefresh: _load,
-      color: AppColors.primary,
-      child: ListView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
-        children: [
-          const AppPageIntro(
-            title: 'Alamat & jadwal',
-            description: 'Pilih tujuan, lalu tentukan waktu pengantaran.',
-          ),
-          AppPanel(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+    final complete = _selectedAddress != null && _selectedSlot != null;
+    return Column(
+      children: [
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: _load,
+            color: AppColors.primary,
+            child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
               children: [
-                AppSectionTitle(
-                  title: _depot!['name'],
-                  subtitle: 'Pengiriman dari depot',
-                  icon: Icons.warehouse_outlined,
-                ),
-                AppAmountLine(
-                  label: 'Ongkir per pesanan',
-                  value: rupiah(_depot!['delivery_fee_rp']),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 24),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'Alamat pengantaran',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 18,
-                    color: AppColors.textMain,
+                const Text(
+                  'Mau diantar ke mana?',
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.7,
                   ),
                 ),
-              ),
-              FilledButton.icon(
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size(40, 40),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 8,
+                const SizedBox(height: 6),
+                const Text(
+                  'Pilih alamat dan waktu pengantaranmu.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    height: 1.5,
+                    color: AppColors.textMuted,
                   ),
                 ),
-                onPressed: _locked ? null : () => _edit(),
-                icon: const Icon(Icons.add, size: 18),
-                label: const Text('Tambah'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          if (_addresses.isEmpty)
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  children: const [
-                    Icon(
-                      Icons.pin_drop_outlined,
-                      size: 40,
-                      color: AppColors.textMuted,
-                    ),
-                    SizedBox(height: 12),
-                    Text(
-                      'Belum ada alamat. Tambahkan penerima dan pin lokasi terlebih dahulu.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: AppColors.textMuted,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          for (final a in _addresses)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: _addressTile(a),
-            ),
-          if (_addressPage < _addressLast)
-            Center(
-              child: TextButton(
-                onPressed: _addressMore ? null : _moreAddresses,
-                child: Text(_addressMore ? 'Memuat...' : 'Muat alamat lainnya'),
-              ),
-            ),
-          const SizedBox(height: 24),
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              Text(
-                'Jadwal pengiriman',
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 18,
-                  color: AppColors.textMain,
-                ),
-              ),
-              OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size(40, 38),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
-                  ),
-                ),
-                onPressed: _locked ? null : _pickDate,
-                icon: const Icon(Icons.calendar_today_outlined, size: 16),
-                label: Text(
-                  '$_date · ${_depot!['timezone']}',
-                  style: const TextStyle(fontSize: 12),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          if (_slotBusy)
-            const Padding(
-              padding: EdgeInsets.all(24),
-              child: Center(
-                child: CircularProgressIndicator(color: AppColors.primary),
-              ),
-            )
-          else if (_slotError != null)
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
+                const SizedBox(height: 20),
+                Row(
                   children: [
-                    Text(
-                      _slotError!,
-                      style: const TextStyle(color: Colors.red),
+                    const Expanded(
+                      child: Text(
+                        'Alamat tujuan',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
                     ),
-                    const SizedBox(height: 10),
-                    TextButton(
-                      onPressed: () => _loadSlots(),
-                      child: const Text('Muat ulang slot'),
+                    TextButton.icon(
+                      onPressed: _locked ? null : () => _edit(),
+                      icon: const Icon(Icons.add_rounded, size: 18),
+                      label: const Text('Tambah'),
                     ),
                   ],
                 ),
-              ),
-            )
-          else if (_slots.where(_open).isEmpty)
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  children: const [
-                    Icon(
-                      Icons.schedule_outlined,
-                      size: 40,
-                      color: AppColors.textMuted,
+                const SizedBox(height: 6),
+                if (_addresses.isEmpty)
+                  const AppPanel(
+                    padding: EdgeInsets.all(18),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          Icons.add_location_alt_outlined,
+                          size: 25,
+                          color: AppColors.primary,
+                        ),
+                        SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'Belum ada alamat. Tambahkan penerima dan pin lokasi terlebih dahulu.',
+                            style: TextStyle(
+                              fontSize: 12,
+                              height: 1.6,
+                              color: AppColors.textMuted,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                    SizedBox(height: 12),
-                    Text(
-                      'Belum ada slot terbuka untuk tanggal ini. Pilih tanggal lain atau muat ulang.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 14,
+                  ),
+                for (final address in _addresses)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: _addressTile(address),
+                  ),
+                if (_addressPage < _addressLast)
+                  TextButton(
+                    onPressed: _addressMore ? null : _moreAddresses,
+                    child: Text(
+                      _addressMore ? 'Memuat...' : 'Muat alamat lainnya',
+                    ),
+                  ),
+                const SizedBox(height: 24),
+                const Text(
+                  'Jadwal pengiriman',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  'Pilih tanggal, lalu jam yang tersedia.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    height: 1.5,
+                    color: AppColors.textMuted,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Semantics(
+                  button: true,
+                  label: 'Pilih tanggal pengiriman',
+                  child: Material(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    clipBehavior: Clip.antiAlias,
+                    child: InkWell(
+                      onTap: _locked ? null : _pickDate,
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: AppColors.primaryLighter,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: const Icon(
+                                Icons.calendar_today_outlined,
+                                size: 20,
+                                color: AppColors.primary,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'Tanggal pengantaran',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: AppColors.textMuted,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 5),
+                                  Text(
+                                    _dateLabel(),
+                                    style: const TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            const Icon(
+                              Icons.keyboard_arrow_down_rounded,
+                              size: 22,
+                              color: AppColors.primary,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                if (_slotBusy)
+                  const Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Center(child: CircularProgressIndicator()),
+                  )
+                else if (_slotError != null)
+                  AppPanel(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text(
+                          _slotError!,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppColors.error,
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () => _loadSlots(),
+                          child: const Text('Muat ulang slot'),
+                        ),
+                      ],
+                    ),
+                  )
+                else if (_slots.where(_open).isEmpty)
+                  AppPanel(
+                    padding: const EdgeInsets.all(18),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const Text(
+                          'Belum ada slot terbuka untuk tanggal ini. Pilih tanggal lain atau muat ulang.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            height: 1.6,
+                            color: AppColors.textMuted,
+                          ),
+                        ),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: TextButton(
+                            onPressed: _locked ? null : _pickDate,
+                            child: const Text('Pilih tanggal lain'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                for (final slot in _slots.where(_open))
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: _slotTile(slot),
+                  ),
+                if (_slotPage < _slotLast)
+                  TextButton(
+                    onPressed: _slotMore ? null : () => _loadSlots(next: true),
+                    child: Text(
+                      _slotMore ? 'Memuat...' : 'Muat jadwal lainnya',
+                    ),
+                  ),
+                const SizedBox(height: 20),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(
+                        Icons.warehouse_outlined,
+                        size: 19,
                         color: AppColors.textMuted,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Dikirim dari ${_depot!['name']}',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                height: 1.5,
+                                color: AppColors.textBody,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Ongkir per pesanan ${rupiah(_depot!['delivery_fee_rp'])}',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: AppColors.textMuted,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (complete)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 16),
+                    child: Text(
+                      'Alamat dan jadwal sudah dipilih.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.primary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                const SizedBox(height: 8),
+                TextButton.icon(
+                  onPressed: _load,
+                  icon: const Icon(Icons.refresh_rounded, size: 18),
+                  label: const Text('Muat ulang pengiriman'),
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (widget.openCart != null)
+          Material(
+            color: Colors.white,
+            child: SafeArea(
+              top: false,
+              child: Container(
+                width: double.infinity,
+                decoration: const BoxDecoration(
+                  border: Border(top: BorderSide(color: AppColors.borderLight)),
+                ),
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (!complete)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: Text(
+                          _selectedAddress == null
+                              ? 'Pilih alamat pengiriman terlebih dahulu.'
+                              : 'Pilih jam pengantaran untuk melanjutkan.',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            height: 1.5,
+                            color: AppColors.textMuted,
+                          ),
+                        ),
+                      ),
+                    FilledButton(
+                      key: const ValueKey('delivery-continue'),
+                      style: FilledButton.styleFrom(
+                        shape: const StadiumBorder(),
+                      ),
+                      onPressed: complete && !_locked ? widget.openCart : null,
+                      child: Text(
+                        widget.continueLabel,
+                        textAlign: TextAlign.center,
                       ),
                     ),
                   ],
                 ),
               ),
-            )
-          else ...[
-            for (final s in _slots.where(_open))
-              Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: _slotTile(s),
-              ),
-          ],
-          if (!_slotBusy && _slotError == null && _slotPage < _slotLast)
-            Center(
-              child: TextButton(
-                onPressed: _slotMore ? null : () => _loadSlots(next: true),
-                child: Text(_slotMore ? 'Memuat...' : 'Muat slot lainnya'),
-              ),
-            ),
-          const SizedBox(height: 20),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: const Color(0xFFE7F4F4),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: AppColors.primary.withValues(alpha: 0.2),
-              ),
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Icon(
-                  Icons.info_outline_rounded,
-                  size: 20,
-                  color: AppColors.primary,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    _selectedAddress != null && _selectedSlot != null
-                        ? 'Alamat dan jadwal sudah dipilih. Pilihan ini belum membuat pesanan atau memesan stok.'
-                        : 'Pilih alamat dan jadwal, lalu buka Keranjang untuk menghitung total dan membuat pesanan.',
-                    style: const TextStyle(
-                      fontSize: 13,
-                      height: 1.4,
-                      color: AppColors.primaryDark,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-              ],
             ),
           ),
-          if (widget.openCart != null &&
-              _selectedAddress != null &&
-              _selectedSlot != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 16),
-              child: FilledButton.icon(
-                onPressed: _locked ? null : widget.openCart,
-                icon: const Icon(Icons.shopping_bag_outlined),
-                label: const Text('Lanjut ke keranjang'),
-              ),
-            ),
-          const SizedBox(height: 12),
-          Center(
-            child: TextButton.icon(
-              onPressed: _load,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Muat ulang pengiriman'),
-            ),
-          ),
-        ],
-      ),
+      ],
     );
+  }
+
+  String _dateLabel() {
+    final date = DateTime.tryParse(_date ?? '');
+    if (date == null) return 'Pilih tanggal';
+    const months = [
+      'Januari',
+      'Februari',
+      'Maret',
+      'April',
+      'Mei',
+      'Juni',
+      'Juli',
+      'Agustus',
+      'September',
+      'Oktober',
+      'November',
+      'Desember',
+    ];
+    return '${date.day} ${months[date.month - 1]} ${date.year}';
   }
 }

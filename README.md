@@ -57,7 +57,7 @@ Status pesanan: `pending` → `confirmed` → `assigned` → `out_for_delivery` 
 
 ## Status pengembangan
 
-**Checkpoint terakhir: 6 November 2026.**
+Checkpoint terakhir 10 November 2026.
 
 Sudah tersedia:
 
@@ -68,10 +68,12 @@ Sudah tersedia:
 - [x] Penugasan trip manual (urutan tujuan, kapasitas, penguncian eksklusif)
 - [x] Konfirmasi muatan dan start trip
 - [x] Hasil pengiriman berhasil/gagal, foto bukti privat, dan COD
+- [x] Rekonsiliasi barang kembali dan uang, serta penutupan trip
+- [x] Foto produk pada admin dan Flutter, dropdown kategori, serta SKU otomatis
+- [x] Perapian katalog, keranjang, pengiriman, akun, dan tampilan kurir Flutter
 
 Berikutnya:
 
-- [ ] Rekonsiliasi barang kembali dan uang, serta penutupan trip
 - [ ] Rute dan ETA, lalu optimasi urutan pengiriman
 - [ ] Pilot
 
@@ -81,6 +83,9 @@ Rincian tiap tahap ada di dokumen checkpoint:
 
 | Tahap | Dokumen |
 | --- | --- |
+| Rekonsiliasi dan penutupan trip | [RECONCILIATION_CHECKPOINT](docs/RECONCILIATION_CHECKPOINT.md) |
+| Katalog dan checkout mobile | [MOBILE_STOREFRONT_CHECKPOINT](docs/MOBILE_STOREFRONT_CHECKPOINT.md) |
+| Foto produk, kategori dan SKU | [API_PHASE_1](docs/API_PHASE_1.md) |
 | Hasil kiriman, foto, COD | [DELIVERY_RESULTS_CHECKPOINT](docs/DELIVERY_RESULTS_CHECKPOINT.md) |
 | Konfirmasi muatan dan start trip | [TRIP_DEPARTURES_CHECKPOINT](docs/TRIP_DEPARTURES_CHECKPOINT.md) |
 | Penugasan trip manual | [MANUAL_TRIPS_CHECKPOINT](docs/MANUAL_TRIPS_CHECKPOINT.md) |

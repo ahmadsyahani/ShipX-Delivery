@@ -26,6 +26,10 @@ import DeparturePanel, {
     type DepartureReview,
     type Schedule,
 } from "./DeparturePanel";
+import ReconciliationPanel, {
+    type Reconciliation,
+    type ReturnProduct,
+} from "./ReconciliationPanel";
 
 type Action = "assign" | "reopen" | "cancel";
 const labels: Record<Action, string> = {
@@ -40,6 +44,8 @@ export default function TripDetail({
     manifest,
     departureReview,
     departureSchedule,
+    reconciliation,
+    returnProducts,
 }: {
     trip: Trip;
     events: {
@@ -49,10 +55,12 @@ export default function TripDetail({
         created_at: string;
         trip_version: number;
     }[];
-    actionKeys: Record<Action | "review", string>;
+    actionKeys: Record<Action | "review" | "reconcile", string>;
     manifest: ManifestRow[];
     departureReview: DepartureReview | null;
     departureSchedule: Schedule | null;
+    reconciliation: Reconciliation | null;
+    returnProducts: ReturnProduct[];
 }) {
     const [mode, setMode] = useState<Action | null>(null);
     const form = useForm({
@@ -89,13 +97,15 @@ export default function TripDetail({
             />
             <Alert>
                 <AlertDescription>
-                    {["in_progress", "awaiting_reconciliation"].includes(
-                        trip.status,
-                    )
-                        ? "Trip sudah berangkat; stok dimuat ke akun trip. Hasil tiap pesanan dan COD dicatat kurir. Rekonsiliasi dilakukan setelah kembali ke depot."
-                        : departureReview
-                          ? "Jadwal dihitung dari estimasi jalan manual yang ditinjau admin. Kurir menghitung muatan dan memulai trip; stok masih di depot sampai start berhasil."
-                          : "Urutan manual belum memiliki tinjauan waktu jalan. Admin perlu meninjau sebelum kurir menghitung muatan dan memulai trip."}
+                    {trip.status === "completed"
+                        ? "Barang kembali dan setoran COD sudah diperiksa admin. Trip selesai; kurir dan kendaraan dapat menerima penugasan baru."
+                        : ["in_progress", "awaiting_reconciliation"].includes(
+                                trip.status,
+                            )
+                          ? "Trip sudah berangkat; stok dimuat ke akun trip. Hasil tiap pesanan dan COD dicatat kurir. Rekonsiliasi dilakukan setelah kembali ke depot."
+                          : departureReview
+                            ? "Jadwal dihitung dari estimasi jalan manual yang ditinjau admin. Kurir menghitung muatan dan memulai trip; stok masih di depot sampai start berhasil."
+                            : "Urutan manual belum memiliki tinjauan waktu jalan. Admin perlu meninjau sebelum kurir menghitung muatan dan memulai trip."}
                 </AlertDescription>
             </Alert>
             <Section title="Penugasan">
@@ -172,6 +182,15 @@ export default function TripDetail({
                 schedule={departureSchedule}
                 idempotencyKey={actionKeys.review}
             />
+            {reconciliation && (
+                <ReconciliationPanel
+                    key={`reconcile-${trip.lock_version}`}
+                    trip={trip}
+                    summary={reconciliation}
+                    products={returnProducts}
+                    idempotencyKey={actionKeys.reconcile}
+                />
+            )}
             <Section
                 title="Urutan tujuan"
                 description={`${snap.depot.name} → tujuan → kembali ke depot`}
@@ -245,21 +264,24 @@ export default function TripDetail({
                     {events.map((e, i) => (
                         <li key={i} className="py-3 text-sm">
                             <p>
-                                {
-                                    (
-                                        {
-                                            created: "Draft dibuat",
-                                            updated: "Rencana diubah",
-                                            assign: "Trip ditetapkan",
-                                            reopen: "Trip dibuka ulang",
-                                            cancel: "Trip dibatalkan",
-                                            departure_reviewed:
-                                                "Keberangkatan ditinjau",
-                                            started:
-                                                "Muatan dikonfirmasi dan trip berangkat",
-                                        } as Record<string, string>
-                                    )[e.action]
-                                }{" "}
+                                {(
+                                    {
+                                        created: "Draft dibuat",
+                                        updated: "Rencana diubah",
+                                        assign: "Trip ditetapkan",
+                                        reopen: "Trip dibuka ulang",
+                                        cancel: "Trip dibatalkan",
+                                        departure_reviewed:
+                                            "Keberangkatan ditinjau",
+                                        started:
+                                            "Muatan dikonfirmasi dan trip berangkat",
+                                        delivery_delivered:
+                                            "Pesanan berhasil dikirim",
+                                        delivery_failed: "Pengiriman gagal",
+                                        reconciled:
+                                            "Barang dan COD direkonsiliasi; trip selesai",
+                                    } as Record<string, string>
+                                )[e.action] ?? e.action}{" "}
                                 · {e.name}
                             </p>
                             <p className="mt-1 text-xs text-muted-foreground">

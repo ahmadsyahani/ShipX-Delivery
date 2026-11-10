@@ -17,6 +17,7 @@ class ProductResource extends JsonResource
             'shipping_volume_cm3' => $this->shipping_volume_cm3, 'length_mm' => $this->length_mm,
             'width_mm' => $this->width_mm, 'height_mm' => $this->height_mm,
             'handling_notes' => $this->handling_notes,
+            'photo_url' => $this->photo_url,
         ];
     }
 }

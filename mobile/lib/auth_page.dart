@@ -312,6 +312,59 @@ class _RoleHomeState extends State<RoleHome> {
     super.dispose();
   }
 
+  Future<void> _deliverySheet() async {
+    if (_shopping == null || _shopping!.locked) return;
+    final draft = ShoppingState(session: widget.session)..ready = true;
+    draft.chooseAddress(_shopping!.address);
+    draft.chooseSlot(_shopping!.slot);
+    final confirmed = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (sheetContext) => SizedBox(
+        height: MediaQuery.sizeOf(sheetContext).height * .88,
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(left: 20, right: 8),
+              child: Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Pengiriman',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Tutup pilihan pengiriman',
+                    onPressed: () => Navigator.pop(sheetContext),
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: DeliveryPage(
+                session: widget.session,
+                shopping: draft,
+                continueLabel: 'Gunakan alamat & jadwal',
+                openCart: () => Navigator.pop(sheetContext, true),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (mounted && confirmed == true && !_shopping!.locked) {
+      _shopping!.chooseAddress(draft.address);
+      _shopping!.chooseSlot(draft.slot);
+    }
+    draft.dispose();
+  }
+
   int _tab = 0;
   bool _busy = false;
   String? _error;
@@ -367,51 +420,23 @@ class _RoleHomeState extends State<RoleHome> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: AppColors.primary,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Icon(
-                Icons.local_shipping_outlined,
-                color: Colors.white,
-                size: 20,
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'ShipX',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: -0.7,
-                    ),
-                  ),
-                  Text(
-                    user.role == 'customer'
-                        ? ['Katalog', 'Pengiriman', 'Keranjang', 'Akun'][_tab]
-                        : user.role == 'courier'
-                        ? ['Trip pengiriman', 'Akun'][_tab]
-                        : title,
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w500,
-                      color: AppColors.textMuted,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
+        title: Text(
+          user.role == 'customer'
+              ? ['ShipX', 'Pengiriman', 'Checkout', 'Akun'][_tab]
+              : user.role == 'courier'
+              ? ['Trip pengiriman', 'Akun'][_tab]
+              : title,
+          style: TextStyle(
+            fontSize: user.role == 'customer' && _tab == 0 ? 25 : 19,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.8,
+            color: _tab == 0 && user.role == 'customer'
+                ? AppColors.primaryDark
+                : AppColors.textMain,
+          ),
         ),
-        toolbarHeight: 76,
+        centerTitle: user.role == 'customer' && _tab != 0,
+        toolbarHeight: 58,
         actions: [
           if (user.role == 'customer')
             IconButton(
@@ -438,7 +463,8 @@ class _RoleHomeState extends State<RoleHome> {
                 onDestinationSelected: (value) => setState(() => _tab = value),
                 backgroundColor: Colors.white,
                 elevation: 0,
-                indicatorColor: AppColors.primaryLight,
+                indicatorColor: Colors.transparent,
+                height: 68,
                 destinations: [
                   const NavigationDestination(
                     icon: Icon(Icons.storefront_outlined),
@@ -518,16 +544,21 @@ class _RoleHomeState extends State<RoleHome> {
                         session: widget.session,
                         shopping: _shopping,
                         openCart: () => setState(() => _tab = 2),
+                        chooseDelivery: _deliverySheet,
+                        keyboardVisible:
+                            MediaQuery.viewInsetsOf(context).bottom > 0,
                       ),
-                      DeliveryPage(
-                        session: widget.session,
-                        shopping: _shopping,
-                        openCart: () => setState(() => _tab = 2),
-                      ),
+                      _tab != 1
+                          ? const SizedBox.shrink()
+                          : DeliveryPage(
+                              session: widget.session,
+                              shopping: _shopping,
+                              openCart: () => setState(() => _tab = 2),
+                            ),
                       CartPage(
                         session: widget.session,
                         shopping: _shopping!,
-                        chooseDelivery: () => setState(() => _tab = 1),
+                        chooseDelivery: _deliverySheet,
                         browse: () => setState(() => _tab = 0),
                       ),
                       account,

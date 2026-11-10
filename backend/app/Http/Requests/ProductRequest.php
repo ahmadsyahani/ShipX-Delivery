@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 class ProductRequest extends FormRequest
@@ -14,6 +15,9 @@ class ProductRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
+        if (! $this->route('product') && (! $this->has('sku') || $this->sku === null || (is_string($this->sku) && trim($this->sku) === ''))) {
+            $this->merge(['sku' => 'SHX-'.Str::ulid()]);
+        }
         if (is_string($this->sku)) {
             $this->merge(['sku' => strtoupper(trim($this->sku))]);
         }
@@ -36,6 +40,10 @@ class ProductRequest extends FormRequest
             'lock_version' => [$this->route('product') ? 'required' : 'sometimes', 'integer', 'min:0'],
             'depot_id' => ['missing'],
             'shipping_volume_cm3' => ['missing'],
+            'photo' => ['nullable', 'file', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048', 'dimensions:max_width=4096,max_height=4096'],
+            'remove_photo' => ['sometimes', 'boolean'],
+            'photo_path' => ['missing'],
+            'photo_url' => ['missing'],
         ];
     }
 

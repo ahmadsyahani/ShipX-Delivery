@@ -8,6 +8,7 @@ import '../catalog_page.dart' show rupiah;
 import '../delivery/delivery_page.dart' show slotDate, slotTime;
 import 'trip_start_panel.dart';
 import 'delivery_result_panel.dart';
+import 'reconciliation_view.dart';
 
 class CourierTripsPage extends StatefulWidget {
   const CourierTripsPage({
@@ -64,7 +65,11 @@ class _CourierTripsPageState extends State<CourierTripsPage>
       }
       setState(() {
         if (widget.id == null) {
-          _trips = (r['data'] as List).cast<Map<String, dynamic>>();
+          _trips = [
+            ...(r['data'] as List).cast<Map<String, dynamic>>(),
+            ...(r['recent_completed'] as List? ?? [])
+                .cast<Map<String, dynamic>>(),
+          ];
         } else {
           _trip = r['data'] as Map<String, dynamic>;
         }
@@ -117,8 +122,14 @@ class _CourierTripsPageState extends State<CourierTripsPage>
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 StatusBadge(
-                  status: inProgress ? 'in_progress' : 'assigned',
-                  text: t['status'] == 'awaiting_reconciliation'
+                  status: t['status'] == 'completed'
+                      ? 'delivered'
+                      : inProgress
+                      ? 'in_progress'
+                      : 'assigned',
+                  text: t['status'] == 'completed'
+                      ? 'Trip selesai'
+                      : t['status'] == 'awaiting_reconciliation'
                       ? 'Menunggu rekonsiliasi'
                       : inProgress
                       ? 'Dalam perjalanan'
@@ -285,7 +296,14 @@ class _CourierTripsPageState extends State<CourierTripsPage>
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _summary(t, detail: true),
-        if (t['manifest'] != null) ...[
+        if (t['reconciliation'] != null) ...[
+          const SizedBox(height: 14),
+          ReconciliationView(
+            summary: t['reconciliation'] as Map<String, dynamic>,
+            timezone: tz,
+          ),
+        ],
+        if (t['manifest'] != null && t['status'] != 'completed') ...[
           const SizedBox(height: 14),
           TripStartPanel(
             externalBusy: _fetching,

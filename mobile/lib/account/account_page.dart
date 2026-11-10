@@ -28,11 +28,19 @@ class AccountPage extends StatelessWidget {
     VoidCallback? onTap, {
     bool destructive = false,
   }) => ListTile(
-    contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
-    leading: Icon(
-      icon,
-      color: destructive ? AppColors.error : AppColors.primary,
-      size: 23,
+    contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
+    leading: Container(
+      width: 42,
+      height: 42,
+      decoration: BoxDecoration(
+        color: destructive ? const Color(0xFFFFF1EF) : const Color(0xFFF0F7F6),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Icon(
+        icon,
+        color: destructive ? AppColors.error : AppColors.primaryDark,
+        size: 21,
+      ),
     ),
     title: Text(
       title,
@@ -42,12 +50,15 @@ class AccountPage extends StatelessWidget {
         color: destructive ? AppColors.error : AppColors.textMain,
       ),
     ),
-    subtitle: Text(
-      subtitle,
-      style: const TextStyle(
-        fontSize: 12,
-        color: AppColors.textMuted,
-        height: 1.5,
+    subtitle: Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Text(
+        subtitle,
+        style: const TextStyle(
+          fontSize: 11,
+          color: AppColors.textMuted,
+          height: 1.5,
+        ),
       ),
     ),
     trailing: const Icon(
@@ -60,13 +71,10 @@ class AccountPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => ListView(
-    padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+    padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
     children: [
-      const AppPageIntro(
-        title: 'Akun kamu',
-        description: 'Pesanan, pengiriman, dan akses akun dalam satu tempat.',
-      ),
-      AppPanel(
+      Padding(
+        padding: const EdgeInsets.fromLTRB(8, 14, 8, 28),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -74,33 +82,42 @@ class AccountPage extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 CircleAvatar(
-                  radius: 26,
-                  backgroundColor: AppColors.primaryLight,
+                  radius: 32,
+                  backgroundColor: const Color(0xFFDDEFE9),
                   child: Text(
                     user.name.isEmpty
                         ? 'U'
                         : user.name.characters.first.toUpperCase(),
                     style: const TextStyle(
-                      fontSize: 23,
+                      fontSize: 28,
                       color: AppColors.primaryDark,
                       fontWeight: FontWeight.w800,
                     ),
                   ),
                 ),
-                const SizedBox(width: 14),
+                const SizedBox(width: 16),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        'Halo, ${user.name}',
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w800,
-                          height: 1.4,
+                      const Text(
+                        'Senang ketemu kamu,',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: AppColors.textMuted,
                         ),
                       ),
                       const SizedBox(height: 5),
+                      Text(
+                        user.name,
+                        style: const TextStyle(
+                          fontSize: 23,
+                          height: 1.3,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.8,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
                       Text(
                         user.email,
                         style: const TextStyle(
@@ -114,69 +131,95 @@ class AccountPage extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 18),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+            DecoratedBox(
               decoration: BoxDecoration(
-                color: AppColors.background,
-                borderRadius: BorderRadius.circular(8),
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(30),
               ),
-              child: Text(
-                switch (user.role) {
-                  'courier' => 'Kurir ShipX',
-                  'admin' => 'Administrator',
-                  _ => 'Pelanggan ShipX',
-                },
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textBody,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 13,
+                  vertical: 8,
+                ),
+                child: Text(
+                  switch (user.role) {
+                    'courier' => 'Kurir ShipX',
+                    'admin' => 'Administrator',
+                    _ => 'Pelanggan ShipX',
+                  },
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: AppColors.primaryDark,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
             ),
           ],
         ),
       ),
-      const SizedBox(height: 16),
-      AppPanel(
-        padding: EdgeInsets.zero,
-        child: Column(
-          children: [
-            if (orders != null)
-              _item(
-                'Pesanan saya',
-                'Status dan riwayat pembelian',
-                Icons.receipt_long_outlined,
-                orders,
-              ),
-            if (delivery != null) ...[
-              const Divider(height: 1, indent: 56),
-              _item(
-                'Alamat & jadwal',
-                'Atur tujuan dan waktu pengantaran',
-                Icons.location_on_outlined,
-                delivery,
-              ),
-            ],
-            if (trips != null)
-              _item(
-                'Trip saya',
-                'Tujuan, muatan, dan hasil pengiriman',
-                Icons.route_outlined,
-                trips,
-              ),
-            if (user.role == 'admin')
-              const Padding(
-                padding: EdgeInsets.all(18),
-                child: Text(
-                  'Kelola operasional melalui web admin ShipX.',
-                  style: TextStyle(fontSize: 13, color: AppColors.textMuted),
+      if (orders != null ||
+          delivery != null ||
+          trips != null ||
+          user.role == 'admin') ...[
+        const Padding(
+          padding: EdgeInsets.only(left: 8, bottom: 12),
+          child: Text(
+            'Aktivitasmu',
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+          ),
+        ),
+        AppPanel(
+          padding: EdgeInsets.zero,
+          child: Column(
+            children: [
+              if (orders != null)
+                _item(
+                  'Pesanan saya',
+                  'Status dan riwayat pembelian',
+                  Icons.receipt_long_outlined,
+                  orders,
                 ),
-              ),
-          ],
+              if (delivery != null) ...[
+                const Divider(
+                  height: 1,
+                  indent: 76,
+                  color: AppColors.borderLight,
+                ),
+                _item(
+                  'Alamat & jadwal',
+                  'Atur tujuan dan waktu pengantaran',
+                  Icons.location_on_outlined,
+                  delivery,
+                ),
+              ],
+              if (trips != null)
+                _item(
+                  'Trip saya',
+                  'Tujuan, muatan, dan hasil pengiriman',
+                  Icons.route_outlined,
+                  trips,
+                ),
+              if (user.role == 'admin')
+                const Padding(
+                  padding: EdgeInsets.all(20),
+                  child: Text(
+                    'Kelola operasional melalui web admin ShipX.',
+                    style: TextStyle(fontSize: 13, color: AppColors.textMuted),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 24),
+      ],
+      const Padding(
+        padding: EdgeInsets.only(left: 8, bottom: 12),
+        child: Text(
+          'Pengaturan akun',
+          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
         ),
       ),
-      const SizedBox(height: 24),
-      const AppSectionTitle(title: 'Pengaturan akun', icon: Icons.tune_rounded),
       AppPanel(
         padding: EdgeInsets.zero,
         child: Column(
@@ -187,14 +230,14 @@ class AccountPage extends StatelessWidget {
               Icons.sync_rounded,
               busy ? null : refresh,
             ),
-            const Divider(height: 1, indent: 56),
+            const Divider(height: 1, indent: 76, color: AppColors.borderLight),
             _item(
               'Lisensi aplikasi',
               'Informasi pustaka dan font',
               Icons.info_outline_rounded,
               () => showLicensePage(context: context, applicationName: 'ShipX'),
             ),
-            const Divider(height: 1, indent: 56),
+            const Divider(height: 1, indent: 76, color: AppColors.borderLight),
             _item(
               'Keluar',
               'Akhiri sesi pada perangkat ini',
@@ -214,7 +257,7 @@ class AccountPage extends StatelessWidget {
             backgroundColor: AppColors.errorBg,
           ),
         ),
-      const SizedBox(height: 28),
+      const SizedBox(height: 30),
       const Center(
         child: Text(
           'ShipX. Barang sampai, urusan beres.',

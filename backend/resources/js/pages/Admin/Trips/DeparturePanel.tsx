@@ -78,9 +78,11 @@ export default function DeparturePanel({
         <>
             <Section
                 title={
-                    ["in_progress", "awaiting_reconciliation"].includes(
-                        trip.status,
-                    )
+                    [
+                        "in_progress",
+                        "awaiting_reconciliation",
+                        "completed",
+                    ].includes(trip.status)
                         ? "Muatan sudah diberangkatkan"
                         : "Manifest muatan per SKU"
                 }
@@ -119,7 +121,9 @@ export default function DeparturePanel({
                             trip.actual_departure_at,
                             trip.timezone_snapshot,
                         )}{" "}
-                        Reservasi sudah dikonsumsi, stok tercatat pada trip.
+                        {trip.status === "completed"
+                            ? "Muatan dan barang kembali sudah direkonsiliasi."
+                            : "Reservasi sudah dikonsumsi, stok tercatat pada trip."}
                     </p>
                 )}
             </Section>

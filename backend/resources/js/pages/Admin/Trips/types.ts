@@ -65,5 +65,6 @@ export const tripStatus: Record<string, string> = {
     assigned: "Ditetapkan",
     in_progress: "Dalam perjalanan",
     awaiting_reconciliation: "Menunggu rekonsiliasi",
+    completed: "Selesai",
     cancelled: "Dibatalkan",
 };

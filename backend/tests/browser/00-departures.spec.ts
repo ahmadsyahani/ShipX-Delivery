@@ -5,11 +5,12 @@ import {randomUUID} from 'node:crypto';
 // Production correctly requires replanning when that master changes.
 
 test('departure: manual road review, stale admin, exact SKU load, replay and locked in-progress trip',async({page,context})=>{
+  test.setTimeout(120000);
   const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
   const guard=await page.goto('/admin/login');expect(guard?.headers()['x-shipx-qa']).toBe('isolated-checkout');
   await page.getByLabel('Email',{exact:true}).fill('departures-admin-ui@example.test');
   await page.getByLabel('Kata sandi',{exact:true}).fill('ShipX-QA-Admin-2026!');
-  await page.getByRole('button',{name:'Masuk',exact:true}).click();await expect(page).toHaveURL(/\/admin$/);
+  await page.getByRole('button',{name:'Masuk',exact:true}).click();await expect(page).toHaveURL(/\/admin$/,{timeout:15000});
   await page.goto('/admin/trips');
   const props=JSON.parse((await page.locator('#app').getAttribute('data-page'))!).props;
   const trip=props.trips.data.find((t:{selected_route:{input_snapshot:{vehicle:{code:string}}}})=>t.selected_route.input_snapshot.vehicle.code==='QA-DEPARTURE');
@@ -75,5 +76,48 @@ test('departure: manual road review, stale admin, exact SKU load, replay and loc
   await page.screenshot({path:'test-results/delivery-result-desktop.png',fullPage:true});
   await page.setViewportSize({width:390,height:844});await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);await page.screenshot({path:'test-results/delivery-result-mobile.png',fullPage:true});
   await page.goto(`/admin/trips/${trip.id}`);await expect(page.getByText(/Menunggu rekonsiliasi/)).toBeVisible();
+  const awaiting=(await(await api()).json()).data;
+  expect(awaiting.reconciliation.expected_cash_rp).toBe(48000);
+  const rows=awaiting.reconciliation.items.filter((r:{stock_state:string})=>r.stock_state==='available');
+  const staleClose=await context.newPage();await staleClose.goto(url);
+  async function fillReturn(target:Page){
+    for(let i=0;i<rows.length;i++){
+      await target.locator(`#return-available-${rows[i].product_id}`).fill('1');
+      await target.locator(`#return-quarantine-${rows[i].product_id}`).fill(i===0?'1':'0');
+      if(i===0)await target.locator(`#return-reason-${rows[i].product_id}`).fill('Satu kemasan rusak; diterima di karantina.');
+    }
+    await target.getByLabel('Uang yang benar-benar diterima (Rp)',{exact:true}).fill('47000');
+    await target.getByLabel('Alasan selisih uang',{exact:true}).fill('Setoran kurang seribu; dicatat dan disetujui admin.');
+    await target.getByRole('checkbox',{name:/Saya sudah menerima barang/}).check();
+  }
+  await fillReturn(page);await fillReturn(staleClose);
+  for(const width of [320,390,1440]){
+    await page.setViewportSize({width,height:900});
+    await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+    await page.screenshot({path:`test-results/reconciliation-form-${width}.png`,fullPage:true});
+  }
+  await page.setViewportSize({width:390,height:844});
+  await page.getByRole('button',{name:'Tinjau & tutup trip',exact:true}).click();
+  await expect(page.getByRole('alertdialog')).toBeVisible();
+  await page.screenshot({path:'test-results/reconciliation-confirm-390.png',fullPage:true});
+  await page.getByRole('button',{name:'Setujui & tutup trip',exact:true}).click();
+  await expect(page.getByText('Trip selesai',{exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Tinjau & tutup trip',exact:true})).toHaveCount(0);
+  const completed=(await(await api()).json()).data;
+  expect(completed.status).toBe('completed');expect(completed.can_start).toBe(false);
+  expect(completed.reconciliation.record.actual_cash_rp).toBe(47000);
+  expect(completed.reconciliation.record.cash_difference_rp).toBe(-1000);
+  expect((await catalog()).map((p:{available_quantity:number})=>p.available_quantity)).toEqual(available.map((n:number)=>n+1));
+  await staleClose.getByRole('button',{name:'Tinjau & tutup trip',exact:true}).click();
+  await staleClose.getByRole('button',{name:'Setujui & tutup trip',exact:true}).click();
+  await expect(staleClose.getByRole('heading',{name:'Perubahan belum disimpan'})).toBeVisible();await staleClose.close();
+  await page.reload();await expect(page.getByText('Trip selesai',{exact:true})).toBeVisible();
+  for(const width of [320,390,1440]){
+    await page.setViewportSize({width,height:900});
+    await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+    await page.screenshot({path:`test-results/reconciliation-receipt-${width}.png`,fullPage:true});
+  }
+  await page.goto('/admin/trips?status=completed');
+  await expect(page.getByRole('link',{name:new RegExp(trip.trip_number)})).toBeVisible();
   expect(errors).toEqual([]);
 });

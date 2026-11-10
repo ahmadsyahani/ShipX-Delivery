@@ -35,6 +35,7 @@ export type Paginated<T> = {
     next_page_url: string | null;
 };
 export type Product = {
+    photo_url?: string | null;
     id: number;
     sku: string;
     name: string;

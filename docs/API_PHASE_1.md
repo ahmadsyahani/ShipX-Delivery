@@ -1,5 +1,19 @@
 # Kontrak API ShipX — fase 1 v0.2
 
+## Kategori dan SKU admin — 9 November 2026
+
+Form tambah/edit produk menerima props categories berisi pilihan umum dan seluruh kategori unik produk depot1, termasuk produk nonaktif. Dropdown menyediakan tambah kategori baru dengan validasi string maksimal80. Kategori tersimpan tetap dikirim melalui field category pada kontrak lama.
+
+Pada POST /admin/products, sku yang tidak dikirim, null atau kosong dibuat server sebagai SHX- diikuti ULID26karakter. Unique constraint depot/SKU tetap berlaku. Kode manual tetap didukung dan dinormalisasi uppercase/trim. PUT update tetap mewajibkan sku valid agar edit metadata mempertahankan kode barang. Tidak ada migration untuk perubahan ini.
+
+## Foto produk — 9 November 2026
+
+Admin dapat mengunggah satu foto opsional saat tambah/edit produk melalui field multipart `photo`. JPEG, PNG atau WebP maksimal 2 MiB dan 4096 × 4096 piksel. Edit multipart memakai POST dengan `_method=put` dan `lock_version`. `remove_photo=true` menghapus foto saat simpan, bersamaan dengan unggahan ditolak. `photo_path` dan `photo_url` merupakan field keluaran yang tidak boleh dikirim sebagai input. Konflik versi diperiksa sebelum menyimpan file. File lama dihapus sesudah transaksi berhasil dan file baru dibersihkan jika transaksi gagal.
+
+Katalog menambah `photo_url` berupa path relatif terhadap origin server, misalnya `/product-photos/{uuid}.png`, atau null untuk produk tanpa foto. Flutter menyelesaikan URL dengan host API aktif dan menampilkan foto di katalog, detail serta keranjang, dengan ikon kategori saat foto kosong, sedang dimuat atau gagal. GET `/product-photos/{file}` bersifat publik untuk foto katalog yang masih direferensikan produk depot1. Nama file acak, MIME ditetapkan dari format tervalidasi dan respons memakai nosniff. File disimpan pada disk local di `product-photos`, sehingga hosting perlu penyimpanan persisten.
+
+Checkpoint aktif 8 November 2026: POST /admin/trips/{trip}/reconcile (session/CSRF/admin aktif, UUID idempotency, lock_version, actual_cash_rp, discrepancy_reason nullable, received_and_approved=true, items lengkap [{product_id,available_quantity,quarantine_quantity,discrepancy_reason}]). Expected dan selisih dihitung server, alasan wajib jika beda per SKU/kondisi atau uang. Menutup awaiting_reconciliation menjadi completed dengan ledger/receipt/audit dan pelepasan claims atomik. GET courier/trips mempertahankan data aktif dan menambah recent_completed maksimal lima milik sendiri; GET detail juga mengizinkan completed milik sendiri, menambah actual_return_at dan reconciliation pada awaiting/completed. can_start/can_record_result false setelah selesai. Lihat RECONCILIATION_CHECKPOINT.md untuk payload/batas/replay. Pernyataan rekonsiliasi belum ada di bawah merupakan histori.
+
 Acuan PRD_ShipX.md dan ERD_ShipX.md. Health, auth, katalog, depot, alamat, slot, quote, checkout, daftar/detail/cancel order sudah diimplementasikan. Detail bukti uji dan batasannya ada di SETUP_STATUS.md.
 
 ## Konvensi

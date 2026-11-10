@@ -1,5 +1,7 @@
 # PRD — ShipX
 
+Checkpoint aktif 8 November 2026: barang kembali layak jual/karantina per SKU, setoran COD, alasan/persetujuan selisih dan penutupan trip sudah diimplementasikan. Receipt/ledger/audit/status completed/pelepasan claims atomik; Flutter menampilkan penyerahan dan receipt milik sendiri. Lihat RECONCILIATION_CHECKPOINT.md. Pernyataan rekonsiliasi belum tersedia di checkpoint lama di bawah adalah histori. Navigasi/optimasi provider dan pilot menjadi tahap berikutnya.
+
 Versi 0.2 · 4 November 2026 · menggantikan lingkup khusus galon v0.1.
 
 ## Konsep dan batas produk

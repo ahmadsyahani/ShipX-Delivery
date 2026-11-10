@@ -5,7 +5,7 @@ import '../core/app_widgets.dart';
 import '../catalog/product_art.dart';
 import '../core/auth_api.dart';
 import '../core/auth_session.dart';
-import '../delivery/delivery_page.dart' show slotTime, slotDate;
+import 'shop_widgets.dart';
 import 'shopping_state.dart';
 import 'orders_page.dart';
 
@@ -134,284 +134,320 @@ class _CartPageState extends State<CartPage> {
     builder: (context, _) {
       final state = widget.shopping;
       final valid = _quote != null && _fingerprint == state.fingerprint;
-      return ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+      final subtotal = state.lines.values.fold<int>(
+        0,
+        (sum, row) =>
+            sum +
+            (row['product']['unit_price_rp'] as int) * (row['quantity'] as int),
+      );
+      final deliveryReady = state.address != null && state.slot != null;
+      return Column(
         children: [
-          const AppPageIntro(
-            title: 'Keranjang kamu',
-            description: 'Periksa pilihanmu sebelum membuat pesanan.',
-          ),
-          if (!state.ready) const Center(child: CircularProgressIndicator()),
-          if (state.message != null)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 16),
-              child: InfoBanner(message: state.message!),
-            ),
-          if (state.storageError)
-            TextButton.icon(
-              icon: const Icon(Icons.refresh),
-              onPressed: state.restore,
-              label: const Text('Baca ulang permintaan'),
-            ),
-          if (state.pending != null) ...[
-            AppPanel(
-              color: AppColors.warningBg,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const AppSectionTitle(
-                    title: 'Permintaan tertunda',
-                    icon: Icons.hourglass_top_rounded,
+          Expanded(
+            child: ListView(
+              key: const ValueKey('cart-content'),
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+              children: [
+                if (!state.ready)
+                  const Center(child: CircularProgressIndicator()),
+                if (state.message != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: InfoBanner(message: state.message!),
                   ),
-                  const Text(
-                    'Periksa hasil sebelumnya sebelum memesan lagi. Pemeriksaan mengirim ulang permintaan yang sama.',
-                    style: TextStyle(fontSize: 13, height: 1.6),
-                  ),
-                  const SizedBox(height: 14),
-                  FilledButton(
-                    onPressed: state.busy ? null : state.retry,
-                    child: Text(
-                      state.busy ? 'Memeriksa...' : 'Periksa hasil permintaan',
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: _orders,
-                    child: const Text('Periksa riwayat pesanan'),
-                  ),
-                  if (state.needsReview)
-                    OutlinedButton(
-                      onPressed: state.busy ? null : _reviewed,
-                      child: const Text(
-                        'Tutup permintaan lama setelah diperiksa',
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-          ],
-          if (state.lines.isEmpty && state.pending == null)
-            AppPanel(
-              child: Column(
-                children: [
-                  const Padding(
-                    padding: EdgeInsets.all(20),
-                    child: Icon(
-                      Icons.shopping_bag_outlined,
-                      size: 52,
-                      color: AppColors.primary,
-                    ),
-                  ),
-                  const Text(
-                    'Belum ada barang pilihan',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Pilih barang dari katalog, lalu atur pengirimannya.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: AppColors.textMuted,
-                      height: 1.6,
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  FilledButton.icon(
-                    onPressed: widget.browse,
-                    icon: const Icon(Icons.add_rounded),
-                    label: const Text('Buka katalog'),
-                  ),
-                ],
-              ),
-            ),
-          if (state.lines.isNotEmpty) ...[
-            AppPanel(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  AppSectionTitle(
-                    title: 'Pilihanmu',
-                    subtitle: '${state.count} barang di keranjang',
-                    icon: Icons.shopping_bag_outlined,
-                  ),
-                  for (final line in state.lines.entries) ...[
-                    _line(line, state),
-                    if (line.key != state.lines.keys.last)
-                      const Divider(height: 28),
-                  ],
-                  const SizedBox(height: 8),
+                if (state.storageError)
                   TextButton.icon(
-                    onPressed: state.locked ? null : widget.browse,
-                    icon: const Icon(Icons.add_rounded, size: 18),
-                    label: const Text('Tambah barang lain'),
+                    icon: const Icon(Icons.refresh),
+                    onPressed: state.restore,
+                    label: const Text('Baca ulang permintaan'),
                   ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            AppPanel(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const AppSectionTitle(
-                    title: 'Pengiriman',
-                    subtitle: 'Tujuan dan jadwal pesanan',
-                    icon: Icons.local_shipping_outlined,
-                  ),
-                  Text(
-                    state.address == null
-                        ? 'Alamat belum dipilih.'
-                        : '${state.address!['label']} - ${state.address!['address_text']}',
-                    style: const TextStyle(
-                      fontSize: 13,
-                      height: 1.6,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    state.slot == null
-                        ? 'Jadwal belum dipilih.'
-                        : '${slotDate(state.slot!['window_start_at'], state.slot!['timezone'])} ${slotTime(state.slot!['window_start_at'], state.slot!['timezone'])}-${slotTime(state.slot!['window_end_at'], state.slot!['timezone'])}',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      height: 1.6,
-                      color: AppColors.textMuted,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextButton(
-                    onPressed: state.locked ? null : widget.chooseDelivery,
-                    child: const Text('Pilih alamat dan jadwal'),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            AppPanel(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const AppSectionTitle(
-                    title: 'Pembayaran',
-                    subtitle: 'COD tunai saat pesanan diterima',
-                    icon: Icons.payments_outlined,
-                  ),
-                  if (!valid)
-                    const Padding(
-                      padding: EdgeInsets.only(bottom: 16),
-                      child: Text(
-                        'Hitung total untuk melihat harga barang dan ongkir terbaru.',
-                        style: TextStyle(
-                          fontSize: 13,
-                          height: 1.6,
-                          color: AppColors.textMuted,
+                if (state.pending != null) ...[
+                  AppPanel(
+                    color: AppColors.warningBg,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const ShopHeading('Permintaan tertunda'),
+                        const Text(
+                          'Periksa hasil sebelumnya sebelum memesan lagi. Pemeriksaan mengirim ulang permintaan yang sama.',
+                          style: TextStyle(fontSize: 13, height: 1.6),
                         ),
-                      ),
-                    ),
-                  if (_error != null)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: InfoBanner(
-                        message: _error!,
-                        color: AppColors.error,
-                        backgroundColor: AppColors.errorBg,
-                      ),
-                    ),
-                  OutlinedButton(
-                    onPressed:
-                        state.locked ||
-                            _quoting ||
-                            state.address == null ||
-                            state.slot == null
-                        ? null
-                        : _calculate,
-                    child: Text(
-                      _quoting ? 'Menghitung...' : 'Hitung total terbaru',
-                    ),
-                  ),
-                  if (valid) ...[
-                    const SizedBox(height: 18),
-                    for (final item in _quote!['items'])
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                        child: Text(
-                          '${item['quantity']} x ${item['name']}: ${rupiah(item['line_total_rp'])}',
-                          style: const TextStyle(
-                            fontSize: 12,
-                            height: 1.6,
-                            color: AppColors.textBody,
+                        const SizedBox(height: 14),
+                        FilledButton(
+                          onPressed: state.busy ? null : state.retry,
+                          child: Text(
+                            state.busy
+                                ? 'Memeriksa...'
+                                : 'Periksa hasil permintaan',
                           ),
                         ),
-                      ),
-                    const Divider(height: 24),
-                    AppAmountLine(
-                      label: 'Subtotal',
-                      value: rupiah(_quote!['subtotal_rp']),
-                    ),
-                    AppAmountLine(
-                      label: 'Ongkir',
-                      value: rupiah(_quote!['delivery_fee_rp']),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Total COD ${rupiah(_quote!['total_rp'])}',
-                      style: const TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.primaryDark,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    if (_quote!['stock_available_now'] != true)
-                      const Padding(
-                        padding: EdgeInsets.only(top: 12),
-                        child: InfoBanner(
-                          message:
-                              'Stok salah satu produk tidak cukup. Ubah jumlah atau muat ulang.',
-                          color: AppColors.error,
-                          backgroundColor: AppColors.errorBg,
+                        TextButton(
+                          onPressed: _orders,
+                          child: const Text('Periksa riwayat pesanan'),
                         ),
-                      ),
-                    const SizedBox(height: 18),
-                    FilledButton(
-                      onPressed:
-                          state.locked || _quote!['stock_available_now'] != true
-                          ? null
-                          : _create,
-                      child: const Text('Lanjut buat pesanan COD'),
+                        if (state.needsReview)
+                          OutlinedButton(
+                            onPressed: state.busy ? null : _reviewed,
+                            child: const Text(
+                              'Tutup permintaan lama setelah diperiksa',
+                            ),
+                          ),
+                      ],
                     ),
-                    const SizedBox(height: 12),
-                    const Text(
-                      'Harga dan ketersediaan diperiksa lagi saat pesanan dibuat. Perhitungan ini belum menahan stok.',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: AppColors.textMuted,
-                        height: 1.6,
-                      ),
-                    ),
-                  ],
+                  ),
+                  const SizedBox(height: 16),
                 ],
-              ),
+                if (state.lines.isEmpty && state.pending == null) _empty(state),
+                if (state.lines.isNotEmpty) ...[
+                  DeliverySummary(
+                    address: state.address,
+                    slot: state.slot,
+                    onTap: state.locked ? null : widget.chooseDelivery,
+                  ),
+                  const SizedBox(height: 14),
+                  AppPanel(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        ShopHeading(
+                          'Pesanan',
+                          action: TextButton(
+                            onPressed: state.locked ? null : widget.browse,
+                            child: const Text('Tambah'),
+                          ),
+                        ),
+                        for (final line in state.lines.entries) ...[
+                          _line(line, state, valid),
+                          if (line.key != state.lines.keys.last)
+                            const Divider(
+                              height: 30,
+                              color: AppColors.borderLight,
+                            ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  AppPanel(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Padding(
+                          padding: EdgeInsets.only(top: 3),
+                          child: Icon(
+                            Icons.payments_outlined,
+                            size: 23,
+                            color: AppColors.primary,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Bayar di tempat',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 15,
+                                ),
+                              ),
+                              SizedBox(height: 5),
+                              Text(
+                                'Siapkan uang tunai saat pesanan diterima.',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  height: 1.5,
+                                  color: AppColors.textMuted,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const Icon(
+                          Icons.check_circle_rounded,
+                          size: 20,
+                          color: AppColors.primary,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  AppPanel(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const ShopHeading('Ringkasan pembayaran'),
+                        AppAmountLine(
+                          label: valid ? 'Subtotal' : 'Perkiraan subtotal',
+                          value: rupiah(
+                            valid ? _quote!['subtotal_rp'] as int : subtotal,
+                          ),
+                        ),
+                        AppAmountLine(
+                          label: 'Ongkir',
+                          value: valid
+                              ? rupiah(_quote!['delivery_fee_rp'])
+                              : 'Dihitung setelah cek total',
+                        ),
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 12),
+                          child: Divider(height: 1, color: AppColors.border),
+                        ),
+                        if (valid)
+                          Text(
+                            'Total COD ${rupiah(_quote!['total_rp'])}',
+                            style: const TextStyle(
+                              fontSize: 19,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: -0.6,
+                            ),
+                          ),
+                        if (!valid)
+                          const Text(
+                            'Cek total untuk mendapatkan harga dan ongkir terbaru.',
+                            style: TextStyle(
+                              fontSize: 12,
+                              height: 1.6,
+                              color: AppColors.textMuted,
+                            ),
+                          ),
+                        if (valid) ...[
+                          const SizedBox(height: 10),
+                          const Text(
+                            'Stok dan harga diperiksa kembali saat pesanan dibuat.',
+                            style: TextStyle(
+                              fontSize: 11,
+                              height: 1.6,
+                              color: AppColors.textMuted,
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: state.locked || _quoting
+                                ? null
+                                : _calculate,
+                            child: const Text('Perbarui total'),
+                          ),
+                          if (_quote!['stock_available_now'] != true)
+                            const InfoBanner(
+                              message:
+                                  'Stok salah satu produk tidak cukup. Ubah jumlah atau muat ulang.',
+                              color: AppColors.error,
+                              backgroundColor: AppColors.errorBg,
+                            ),
+                        ],
+                        if (_error != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 12),
+                            child: InfoBanner(
+                              message: _error!,
+                              color: AppColors.error,
+                              backgroundColor: AppColors.errorBg,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 12),
+                TextButton.icon(
+                  onPressed: _orders,
+                  icon: const Icon(Icons.receipt_long_outlined, size: 18),
+                  label: const Text('Lihat pesanan saya'),
+                ),
+              ],
             ),
-          ],
-          const SizedBox(height: 16),
-          TextButton.icon(
-            onPressed: _orders,
-            icon: const Icon(Icons.receipt_long_outlined, size: 20),
-            label: const Text('Lihat pesanan saya'),
           ),
+          if (state.lines.isNotEmpty && state.pending == null)
+            ShopDock(
+              caption: valid ? 'Total pembayaran' : 'Subtotal sementara',
+              amount: rupiah(valid ? _quote!['total_rp'] as int : subtotal),
+              action: _quoting
+                  ? 'Menghitung...'
+                  : !deliveryReady
+                  ? 'Atur pengiriman'
+                  : valid
+                  ? 'Pesan sekarang'
+                  : 'Hitung total',
+              busy: state.busy || _quoting,
+              buttonKey: const ValueKey('checkout-action'),
+              onPressed:
+                  state.locked ||
+                      (valid && _quote!['stock_available_now'] != true)
+                  ? null
+                  : !deliveryReady
+                  ? widget.chooseDelivery
+                  : valid
+                  ? _create
+                  : _calculate,
+            ),
         ],
       );
     },
   );
 
+  Widget _empty(ShoppingState state) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 34, horizontal: 16),
+    child: Column(
+      children: [
+        SizedBox(
+          width: 140,
+          height: 140,
+          child: ProductArt(
+            category: state.lastOrder == null ? 'Paket' : 'Barang',
+            transparent: true,
+          ),
+        ),
+        const SizedBox(height: 22),
+        Text(
+          state.lastOrder == null
+              ? 'Masih kosong, nih.'
+              : 'Pesanan sudah dibuat',
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            fontSize: 23,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.7,
+          ),
+        ),
+        const SizedBox(height: 9),
+        Text(
+          state.lastOrder == null
+              ? 'Pilih kebutuhanmu. Kami bantu antarkan.'
+              : 'Lihat perkembangan pesanan di riwayat pembelian.',
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            fontSize: 13,
+            height: 1.6,
+            color: AppColors.textMuted,
+          ),
+        ),
+        const SizedBox(height: 24),
+        FilledButton(
+          onPressed: state.lastOrder == null ? widget.browse : _orders,
+          style: FilledButton.styleFrom(shape: const StadiumBorder()),
+          child: Text(
+            state.lastOrder == null ? 'Mulai belanja' : 'Lihat pesanan',
+          ),
+        ),
+      ],
+    ),
+  );
+
   Widget _line(
     MapEntry<String, Map<String, dynamic>> line,
     ShoppingState state,
+    bool valid,
   ) {
-    final product = line.value['product'] as Map<String, dynamic>;
+    var product = line.value['product'] as Map<String, dynamic>;
+    if (valid) {
+      for (final item in _quote!['items']) {
+        if (item['product_id']?.toString() == line.key) {
+          product = {...product, ...Map<String, dynamic>.from(item)};
+        }
+      }
+    }
+    final quantity = line.value['quantity'] as int;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -419,10 +455,14 @@ class _CartPageState extends State<CartPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             SizedBox(
-              width: 60,
-              height: 72,
+              width: 78,
+              height: 88,
               child: ProductArt(
                 category: product['category'] as String? ?? 'Barang',
+                photoUrl: product['photo_url'] as String?,
+                productName: product['name'] as String?,
+                baseUrl: widget.session.api.baseUrl,
+                transparent: true,
               ),
             ),
             const SizedBox(width: 12),
@@ -434,17 +474,24 @@ class _CartPageState extends State<CartPage> {
                     product['name'],
                     style: const TextStyle(
                       fontSize: 14,
-                      fontWeight: FontWeight.w700,
                       height: 1.5,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                   const SizedBox(height: 5),
                   Text(
-                    '${rupiah(product['unit_price_rp'])} / item',
+                    '$quantity item',
                     style: const TextStyle(
-                      fontSize: 12,
+                      fontSize: 11,
                       color: AppColors.textMuted,
-                      height: 1.5,
+                    ),
+                  ),
+                  const SizedBox(height: 9),
+                  Text(
+                    rupiah((product['unit_price_rp'] as int) * quantity),
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
                 ],
@@ -452,13 +499,25 @@ class _CartPageState extends State<CartPage> {
             ),
           ],
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 6),
         Row(
           children: [
-            Container(
+            IconButton(
+              tooltip: 'Hapus barang',
+              onPressed: state.locked
+                  ? null
+                  : () => state.quantity(line.key, 0),
+              icon: const Icon(
+                Icons.delete_outline_rounded,
+                size: 20,
+                color: AppColors.textMuted,
+              ),
+            ),
+            const Spacer(),
+            DecoratedBox(
               decoration: BoxDecoration(
-                color: AppColors.background,
-                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.border),
+                borderRadius: BorderRadius.circular(30),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -467,45 +526,32 @@ class _CartPageState extends State<CartPage> {
                     tooltip: 'Kurangi',
                     onPressed: state.locked
                         ? null
-                        : () => state.quantity(
-                            line.key,
-                            line.value['quantity'] - 1,
-                          ),
-                    icon: const Icon(Icons.remove_rounded, size: 18),
+                        : () => state.quantity(line.key, quantity - 1),
+                    icon: const Icon(
+                      Icons.remove_rounded,
+                      size: 18,
+                      color: AppColors.primary,
+                    ),
                   ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    child: Text(
-                      '${line.value['quantity']}',
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                      ),
+                  Text(
+                    '$quantity',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
                   IconButton(
                     tooltip: 'Tambah',
-                    onPressed: state.locked || line.value['quantity'] >= 20
+                    onPressed: state.locked || quantity >= 20
                         ? null
-                        : () => state.quantity(
-                            line.key,
-                            line.value['quantity'] + 1,
-                          ),
-                    icon: const Icon(Icons.add_rounded, size: 18),
+                        : () => state.quantity(line.key, quantity + 1),
+                    icon: const Icon(
+                      Icons.add_rounded,
+                      size: 18,
+                      color: AppColors.primary,
+                    ),
                   ),
                 ],
-              ),
-            ),
-            const Spacer(),
-            IconButton(
-              tooltip: 'Hapus barang',
-              onPressed: state.locked
-                  ? null
-                  : () => state.quantity(line.key, 0),
-              icon: const Icon(
-                Icons.delete_outline,
-                color: AppColors.error,
-                size: 20,
               ),
             ),
           ],

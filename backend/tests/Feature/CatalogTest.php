@@ -26,6 +26,38 @@ class CatalogTest extends TestCase
         return $admin;
     }
 
+    public function test_blank_or_missing_create_skus_are_generated_and_edit_keeps_existing_codes(): void
+    {
+        $this->admin();
+        foreach ([null, '', '   '] as $sku) {
+            $this->post('/admin/products', $this->payload(['sku' => $sku]))->assertRedirect('/admin/products');
+        }
+        $payload = $this->payload();
+        unset($payload['sku']);
+        $this->post('/admin/products', $payload)->assertRedirect('/admin/products');
+        $codes = Product::pluck('sku');
+        $this->assertCount(4, $codes->unique());
+        foreach ($codes as $code) {
+            $this->assertMatchesRegularExpression('/^SHX-[0-9A-HJKMNP-TV-Z]{26}$/D', $code);
+        }
+        $product = Product::firstOrFail();
+        $this->put('/admin/products/'.$product->id, $this->payload(['sku' => '', 'lock_version' => 0]))->assertSessionHasErrors('sku');
+        $this->assertSame($product->sku, $product->fresh()->sku);
+        $this->put('/admin/products/'.$product->id, $this->payload(['sku' => $product->sku, 'name' => 'Nama baru', 'lock_version' => 0]))->assertRedirect('/admin/products');
+        $this->assertSame($product->sku, $product->fresh()->sku);
+    }
+
+    public function test_category_choices_include_defaults_and_existing_inactive_categories_once(): void
+    {
+        $this->admin();
+        $product = $this->product(['category' => 'Kategori lama', 'is_active' => false]);
+        $this->product(['sku' => 'ANOTHER', 'category' => 'Kategori lama']);
+        foreach (['/admin/products/create', '/admin/products/'.$product->id.'/edit'] as $url) {
+            $this->get($url)->assertOk()->assertInertia(fn (Assert $page) => $page
+                ->where('categories', ['Kategori lama', 'Kebutuhan Rumah Tangga', 'Lainnya', 'Makanan', 'Minuman', 'Perawatan Diri']));
+        }
+    }
+
     private function product(array $overrides = []): Product
     {
         $product = new Product($this->payload($overrides));

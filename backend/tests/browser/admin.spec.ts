@@ -31,9 +31,11 @@ test('admin React: auth, SPA navigation, products, validation, conflict, stock, 
   expect(await page.evaluate(() => (window as Window & { shipxNavCheck?: string }).shipxNavCheck)).toBe('inertia');
   await page.getByRole('link', { name: 'Tambah produk', exact: true }).click();
   const sku = `UI-${Date.now()}`;
-  for (const [label, value] of Object.entries({ 'Nama produk': 'Produk uji React', 'Kode SKU': sku, Kategori: 'Pengujian', 'Harga per satuan (Rp)': '15000', 'Berat satu item (kg)': '1', 'Panjang kemasan (cm)': '10', 'Lebar kemasan (cm)': '10', 'Tinggi kemasan (cm)': '10' })) {
+  for (const [label, value] of Object.entries({ 'Nama produk': 'Produk uji React', 'Kode SKU': sku, 'Harga per satuan (Rp)': '15000', 'Berat satu item (kg)': '1', 'Panjang kemasan (cm)': '10', 'Lebar kemasan (cm)': '10', 'Tinggi kemasan (cm)': '10' })) {
     await page.getByLabel(label, { exact: true }).fill(value);
   }
+  await page.getByLabel('Kategori', { exact: true }).selectOption('new');
+  await page.getByLabel('Nama kategori baru', { exact: true }).fill('Pengujian');
   await page.getByRole('switch', { name: 'Produk aktif' }).click();
   const savedPackaging = page.waitForRequest(request => request.method() === 'POST' && new URL(request.url()).pathname === '/admin/products');
   await page.getByRole('button', { name: 'Simpan produk', exact: true }).click();

@@ -12,7 +12,7 @@ if (($argv[1] ?? '') === 'worker') {
 }
 require __DIR__.'/../backend/vendor/autoload.php';
 $app = require __DIR__.'/../backend/bootstrap/app.php';
-$app->make(Kernel::class)->bootstrap();
+$app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
 
 use App\Models\Address;
 use App\Models\DeliverySlot;
@@ -32,8 +32,8 @@ use App\Services\OrderLifecycleService;
 use App\Services\TripDepartureReviewService;
 use App\Services\TripDepartureService;
 use App\Services\TripManifestService;
+use App\Services\TripReconciliationService;
 use Carbon\CarbonImmutable;
-use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Date;
@@ -56,6 +56,18 @@ if (($argv[1] ?? '') === 'worker') {
             } usleep(20000);
         }
         $result = app(IdempotencyService::class)->run((int) $actor, 'qa.'.$action.':'.$id, $key, ['lock_version' => (int) $version], function () use ($actor, $id, $action, $version) {
+            if ($action === 'reconcile') {
+                $trip = Trip::findOrFail($id);
+                $summary = app(TripReconciliationService::class)->summary($trip);
+                $items = [];
+                foreach ($summary['items'] as $row) {
+                    $product = (int) $row['product_id'];
+                    $items[$product] ??= ['product_id' => $product, 'available_quantity' => 0, 'quarantine_quantity' => 0, 'discrepancy_reason' => null];
+                    $items[$product][$row['stock_state'].'_quantity'] = $row['expected_quantity'];
+                }
+
+                return app(TripReconciliationService::class)->close((int) $actor, (int) $id, ['lock_version' => (int) $version, 'actual_cash_rp' => $summary['expected_cash_rp'], 'discrepancy_reason' => null, 'received_and_approved' => true, 'items' => array_values($items)]);
+            }
             if (in_array($action, ['delivered', 'failed'], true)) {
                 config(['filesystems.disks.local.root' => storage_path('framework/testing/delivery-qa-'.substr(config('database.connections.mysql.database'), 15))]);
                 $stop = DB::table('trip_stops')->where('trip_id', $id)->orderBy('sequence_no')->first();
@@ -336,6 +348,34 @@ try {
                 if ($t->refresh()->status !== 'awaiting_reconciliation' || DB::table('active_order_allocations')->where('trip_id', $t->id)->count() !== 2) {
                     throw new RuntimeException('Claims released before reconciliation.');
                 }
+                if ($verifyReconciliations ?? false) {
+                    $before = [];
+                    foreach ($loadProducts as $p) {
+                        $before[$p->id] = (int) InventoryAccount::where('product_id', $p->id)->where('owner_key', 'depot')->where('stock_state', 'available')->value('balance_quantity');
+                    }
+                    $key = Str::uuid()->toString();
+                    $otherAdmin = $round === 13 ? User::factory()->create(['role' => 'admin'])->id : $admin->id;
+                    $pair($round + 10, [[$admin->id, $t->id, 'reconcile', $t->lock_version, $key], [$otherAdmin, $t->id, 'reconcile', $t->lock_version, $round === 12 ? $key : Str::uuid()->toString()]], $round === 12 ? [200, 200] : [200, 409]);
+                    if ($t->refresh()->status !== 'completed' || ! $t->actual_return_at || DB::table('trip_reconciliations')->where('trip_id', $t->id)->count() !== 1 || DB::table('inventory_transactions')->where('event_key', 'reconciliation:'.$t->id)->count() !== 1) {
+                        throw new RuntimeException('Reconciliation race duplicated or lost final effects.');
+                    }
+                    foreach (['active_order_allocations', 'courier_trip_locks', 'vehicle_trip_locks'] as $table) {
+                        if (DB::table($table)->where('trip_id', $t->id)->exists()) {
+                            throw new RuntimeException('Completed trip still holds claims.');
+                        }
+                    }
+                    foreach ($loadProducts as $i => $p) {
+                        $returned = $delivered ? ($i === 0 ? 2 : 1) : ($i === 0 ? 4 : 2);
+                        $depot = (int) InventoryAccount::where('product_id', $p->id)->where('owner_key', 'depot')->where('stock_state', 'available')->value('balance_quantity');
+                        if ($depot !== $before[$p->id] + $returned || (int) InventoryAccount::where('owner_key', 'trip:'.$t->id)->where('product_id', $p->id)->sum('balance_quantity') !== 0) {
+                            throw new RuntimeException('Reconciliation stock returned more than once or trip stock not zero.');
+                        }
+                    }
+                    $receipt = DB::table('trip_reconciliations')->where('trip_id', $t->id)->first();
+                    if ((int) $receipt->expected_cash_rp !== ($delivered ? 48000 : 0) || (int) $receipt->cash_difference_rp !== 0) {
+                        throw new RuntimeException('Reconciliation cash snapshot invalid.');
+                    }
+                }
             }
             foreach (InventoryAccount::all() as $account) {
                 if ($account->balance_quantity !== (int) DB::table('inventory_entries')->where('inventory_account_id', $account->id)->sum('quantity_delta')) {
@@ -343,6 +383,9 @@ try {
                 }
             }
             echo "PASS: concurrent delivered/failed, delivered retries with same/different keys; exactly one result, proof, COD and multi-SKU ledger, claims retained for reconciliation.\n";
+            if ($verifyReconciliations ?? false) {
+                echo "PASS: MySQL concurrent reconciliation with same/different keys and different admins; one receipt/ledger, exact SKU returns/COD, zero trip stock and all claims released.\n";
+            }
         }
         echo "PASS: MySQL parallel start/start, same-key replay, start/reopen, start/cancel; multi-SKU balances, single load receipt/event and retained claims verified.\n";
     }

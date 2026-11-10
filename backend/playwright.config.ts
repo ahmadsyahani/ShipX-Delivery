@@ -5,6 +5,9 @@ export default defineConfig({
   workers: 1,
   fullyParallel: false,
   timeout: 60000,
+  // The single-process PHP QA server can queue browser asset/redirect requests.
+  // Wait for the final UI state without weakening any domain assertions.
+  expect: { timeout: 15000 },
   use: {
     baseURL: 'http://127.0.0.1:8001',
     channel: 'chrome',

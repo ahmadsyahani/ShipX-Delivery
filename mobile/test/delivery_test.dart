@@ -108,17 +108,8 @@ void main() {
     await tester.ensureVisible(find.text('12:00–14:00'));
     await tester.tap(find.text('12:00–14:00'));
     await tester.pump();
-    await tester.ensureVisible(
-      find.text(
-        'Alamat dan jadwal sudah dipilih. Pilihan ini belum membuat pesanan atau memesan stok.',
-      ),
-    );
-    expect(
-      find.text(
-        'Alamat dan jadwal sudah dipilih. Pilihan ini belum membuat pesanan atau memesan stok.',
-      ),
-      findsOneWidget,
-    );
+    await tester.ensureVisible(find.text('Alamat dan jadwal sudah dipilih.'));
+    expect(find.text('Alamat dan jadwal sudah dipilih.'), findsOneWidget);
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
@@ -159,7 +150,9 @@ void main() {
     session.offline = false;
     await tester.tap(find.text('Coba lagi'));
     await tester.pumpAndSettle();
-    expect(find.text('Alamat & jadwal'), findsOneWidget);
+    expect(find.text('Mau diantar ke mana?'), findsOneWidget);
+    expect(find.text('5 November 2026'), findsOneWidget);
+    expect(find.textContaining('Asia/'), findsNothing);
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
