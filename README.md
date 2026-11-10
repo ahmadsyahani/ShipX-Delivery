@@ -1,30 +1,96 @@
 # ShipX
 
-Fondasi pemesanan dan pengantaran berbagai barang dari satu pusat pemenuhan: Flutter Android (customer/courier), Laravel API, React + Inertia + shadcn/ui + Tailwind CSS (admin), MySQL.
+**ShipX adalah aplikasi pemesanan dan pengantaran barang dari satu depot ke banyak pelanggan, dengan rencana rute pengiriman yang dioptimalkan.**
 
-## Struktur
+Pelanggan memesan beberapa barang lewat HP, admin mengelola stok dan menyusun trip, lalu kurir mengantar barang dan mencatat hasilnya. Seluruh pesanan dibayar tunai di tempat (COD).
 
-- `backend/`: Laravel; API di routes/api.php, web di routes/web.php. Controller/Request/Resource dibuat per fitur saat dibutuhkan; aturan lintas channel ditempatkan di service/action yang sama. Tidak memakai microservice atau repository generik pada fondasi.
-- UI admin: `backend/resources/js/pages/Admin`, layout dan komponen React di `resources/js/layouts` dan `resources/js/components`; komponen shadcn asli ada di `components/ui`. Blade hanya root Inertia.
-- `mobile/`: source Flutter awal; core konfigurasi/API, selanjutnya features/auth, addresses, orders, courier ditambahkan ketika fiturnya dikerjakan.
-- `docs/`: PRD, ERD, kontrak API fase pertama, dan catatan setup.
-- `scripts/`: penyelesaian scaffolding Android lokal.
+> Model MVP saat ini adalah katalog barang milik **satu operator** yang diambil dari **satu depot**. Layanan kirim paket bebas dari banyak pengirim belum termasuk dan perlu keputusan produk tersendiri.
 
-## Status
+## Isi
 
-Checkpoint 6 November 2026 mencakup [hasil kiriman, foto privat dan COD](docs/DELIVERY_RESULTS_CHECKPOINT.md). Kurir mencatat seluruh order berhasil/gagal sesuai urutan, dengan ledger dan COD atomik serta pemulihan retry foto/hasil. Setelah semua tujuan, trip menunggu rekonsiliasi. Migration 000009 Ran, Flutter53/browser6/analyzer/build/APK dan race MySQL lolos. Rekonsiliasi serta penutupan trip dikerjakan berikutnya.
+- [Cara kerja singkat](#cara-kerja-singkat)
+- [Siapa memakai apa](#siapa-memakai-apa)
+- [Teknologi](#teknologi)
+- [Struktur proyek](#struktur-proyek)
+- [Status pengembangan](#status-pengembangan)
+- [Menjalankan backend](#menjalankan-backend)
+- [Menjalankan aplikasi Flutter](#menjalankan-aplikasi-flutter)
+- [Akun staf dan web admin](#akun-staf-dan-web-admin)
+- [Pengujian](#pengujian)
+- [Dokumentasi](#dokumentasi)
 
-Checkpoint terbaru 5 November 2026: [konfirmasi muatan dan start trip](docs/TRIP_DEPARTURES_CHECKPOINT.md) tersedia. Admin meninjau durasi jalan manual beserta sumber; kurir memeriksa semua SKU dan mulai dengan transfer ledger/reservation/status atomik. Migration 000008 Ran; 85 tes backend, 48 Flutter, 6 browser, analyzer/build/APK serta race MySQL lolos. `.env` utuh; belum commit/push. HP belum terdeteksi untuk pemasangan APK terbaru. Berikutnya hasil pengiriman, bukti, COD dan rekonsiliasi. Status checkpoint lama di bawah merupakan histori.
+## Cara kerja singkat
 
-Checkpoint aktif: [penugasan trip manual](docs/MANUAL_TRIPS_CHECKPOINT.md) tersedia di admin dan Flutter kurir. Draft, urutan tujuan, penetapan, reopen/batal sebelum berangkat, kapasitas dan penguncian eksklusif sudah diuji. Migration 000007 sudah Ran; 77 tes backend, 43 tes Flutter, 5 skenario browser, build/analyzer dan race MySQL lolos. Perubahan masih lokal develop. HP belum terdeteksi untuk uji trip terbaru. ETA/routing, pemuatan/start, hasil/COD dan rekonsiliasi menyusul; penugasan belum memindahkan stok. Catatan checkpoint sebelumnya di bawah merupakan histori.
+1. **Pelanggan** login, menyimpan alamat, memilih slot, lalu menyusun keranjang berisi beberapa barang. Harga dan total berat/volume dihitung oleh server.
+2. **Pelanggan** checkout dengan COD. Stok langsung dicadangkan (reservation).
+3. **Admin** mengonfirmasi atau menolak pesanan. Pesanan pending yang lewat batas waktu (awal 30 menit) dibatalkan otomatis.
+4. **Admin** memilih pesanan, kendaraan, dan kurir untuk membuat trip, dengan batas kapasitas berat dan volume kendaraan.
+5. **Kurir** memeriksa muatan, memulai trip, lalu mengantar sesuai urutan dan mencatat hasil serta foto bukti.
+6. **Admin** merekonsiliasi barang yang kembali dan uang COD, lalu menutup trip.
 
-Checkpoint terbaru: master kurir/kendaraan tersedia pada admin, termasuk kapasitas, aktif/nonaktif, konflik versi dan revokasi token kurir. Migration fleet_masters sudah Ran; 67 tes backend / 1002 assertions, empat skenario browser dan uji HP checkout/keputusan/login kurir lolos. Rincian: [master armada dan uji HP](docs/FLEET_MASTERS_CHECKPOINT.md). Perubahan checkpoint ini masih lokal di develop sampai ditinjau dan di-commit pengguna.
+Status pesanan: `pending` → `confirmed` → `assigned` → `out_for_delivery` → `delivered` / `failed`.
 
-Autentikasi, katalog, depot, alamat/slot, stok, checkout COD, keputusan admin serta master kurir/kendaraan tersedia. Admin React + Inertia mengelola stok beralasan dan mengonfirmasi/menolak pending; customer Flutter mempunyai keranjang, quote server, checkout, riwayat/detail, status terbaru dan pembatalan sebelum penugasan. Berikutnya penugasan trip dan pengantaran manual. Catat stok nyata melalui `/admin/stock`; saldo awal produk nol. Detail: [master armada](docs/FLEET_MASTERS_CHECKPOINT.md), [keputusan admin](docs/ORDER_DECISIONS_CHECKPOINT.md), [status setup](docs/SETUP_STATUS.md).
+## Siapa memakai apa
+
+| Peran | Platform | Yang bisa dilakukan |
+| --- | --- | --- |
+| Customer | Flutter Android | Kelola alamat, pesan barang, pantau status, batalkan sebelum penugasan |
+| Courier | Flutter Android | Lihat trip sendiri, konfirmasi muatan, catat hasil dan COD |
+| Admin | Web | Kelola produk, stok, pesanan, kendaraan, kurir, trip, dan rekonsiliasi |
+
+## Teknologi
+
+- **Mobile:** Flutter (Android)
+- **Backend:** Laravel, REST API dengan Sanctum
+- **Admin web:** React + Inertia + TypeScript + shadcn/ui + Tailwind CSS
+- **Database:** MySQL
+
+## Struktur proyek
+
+| Folder | Isi |
+| --- | --- |
+| `backend/` | Laravel. API di `routes/api.php`, web di `routes/web.php`. Aturan bisnis lintas channel ada di service/action yang sama. |
+| `backend/resources/js/` | UI admin: halaman di `pages/Admin`, layout di `layouts`, komponen di `components` (shadcn di `components/ui`). Blade hanya sebagai root Inertia. |
+| `mobile/` | Aplikasi Flutter untuk customer dan kurir. |
+| `docs/` | PRD, ERD, kontrak API, dan catatan checkpoint. |
+| `scripts/` | Skrip penyelesaian scaffolding Android lokal. |
+
+## Status pengembangan
+
+**Checkpoint terakhir: 6 November 2026.**
+
+Sudah tersedia:
+
+- [x] Autentikasi, katalog, depot, alamat, dan slot pengiriman
+- [x] Stok dengan alasan perubahan, plus checkout COD
+- [x] Keputusan admin (konfirmasi/tolak pesanan)
+- [x] Master kurir dan kendaraan
+- [x] Penugasan trip manual (urutan tujuan, kapasitas, penguncian eksklusif)
+- [x] Konfirmasi muatan dan start trip
+- [x] Hasil pengiriman berhasil/gagal, foto bukti privat, dan COD
+
+Berikutnya:
+
+- [ ] Rekonsiliasi barang kembali dan uang, serta penutupan trip
+- [ ] Rute dan ETA, lalu optimasi urutan pengiriman
+- [ ] Pilot
+
+Catatan: untuk saat ini kelayakan waktu jalan memakai durasi ruas yang diisi manual oleh admin, bukan routing provider atau lalu lintas langsung.
+
+Rincian tiap tahap ada di dokumen checkpoint:
+
+| Tahap | Dokumen |
+| --- | --- |
+| Hasil kiriman, foto, COD | [DELIVERY_RESULTS_CHECKPOINT](docs/DELIVERY_RESULTS_CHECKPOINT.md) |
+| Konfirmasi muatan dan start trip | [TRIP_DEPARTURES_CHECKPOINT](docs/TRIP_DEPARTURES_CHECKPOINT.md) |
+| Penugasan trip manual | [MANUAL_TRIPS_CHECKPOINT](docs/MANUAL_TRIPS_CHECKPOINT.md) |
+| Master armada | [FLEET_MASTERS_CHECKPOINT](docs/FLEET_MASTERS_CHECKPOINT.md) |
+| Keputusan admin | [ORDER_DECISIONS_CHECKPOINT](docs/ORDER_DECISIONS_CHECKPOINT.md) |
+| Status setup | [SETUP_STATUS](docs/SETUP_STATUS.md) |
 
 ## Menjalankan backend
 
-PHP 8.5.2 lokal; Laravel framework terkunci melalui composer.lock. Node untuk Vite/Tailwind. Dependensi tidak dibundel dalam arsip.
+**Kebutuhan:** PHP 8.5.2, Composer, Node.js (untuk Vite/Tailwind), MySQL (misalnya lewat Laragon).
 
 ```powershell
 cd backend
@@ -36,15 +102,24 @@ npm.cmd run build
 php artisan serve --host=127.0.0.1 --port=8000
 ```
 
-Jangan menimpa .env yang sudah dikonfigurasi; Copy-Item hanya pada checkout baru. Untuk HP fisik, jalankan server development pada `--host=0.0.0.0` hanya di jaringan lokal tepercaya, lalu gunakan IP LAN laptop. Jangan expose server development ke internet.
+Cek server berjalan: `GET http://127.0.0.1:8000/api/v1/health` (tidak memerlukan MySQL).
 
-`GET http://127.0.0.1:8000/api/v1/health` tidak memerlukan MySQL. Konfigurasi file session/cache memungkinkan pengecekan fondasi sebelum database siap. Aktifkan MySQL lewat Laragon, buat database kosong `shipx` dengan akun development yang sesuai, dan isi DB_USERNAME/DB_PASSWORD di .env. Jangan menaruh password nyata di .env.example.
+Menyiapkan database:
 
-Migration identitas user dan personal_access_tokens Sanctum sudah tersedia. Pada checkout yang sudah tersetup cukup `composer install` lalu `php artisan migrate`; jangan mengulang key:generate atau menimpa `.env`. Migration domain lain dibuat bertahap. Jangan jalankan migrate:fresh terhadap database yang sudah berisi data.
+1. Aktifkan MySQL, lalu buat database kosong bernama `shipx`.
+2. Isi `DB_USERNAME` dan `DB_PASSWORD` di `.env`.
+3. Jalankan `php artisan migrate`.
 
-## Menjalankan Flutter
+**Perhatian:**
 
-Flutter SDK harus writable oleh terminal pengguna. Jalankan dari PowerShell biasa jika SDK tidak bisa diakses oleh lingkungan otomatis.
+- `Copy-Item .env.example .env` dan `key:generate` hanya untuk checkout baru. Jangan menimpa `.env` yang sudah dikonfigurasi.
+- Jangan menjalankan `migrate:fresh` pada database yang sudah berisi data.
+- Jangan menaruh password asli di `.env.example`.
+- Untuk HP fisik, jalankan server dengan `--host=0.0.0.0` hanya di jaringan lokal tepercaya, lalu pakai IP LAN laptop. Jangan membuka server development ke internet.
+
+## Menjalankan aplikasi Flutter
+
+Flutter SDK harus bisa ditulis oleh terminal kamu. Jalankan dari PowerShell biasa jika SDK tidak bisa diakses oleh lingkungan otomatis.
 
 ```powershell
 .\scripts\initialize-mobile.ps1
@@ -53,24 +128,68 @@ flutter analyze
 flutter run --dart-define=API_BASE_URL=http://10.0.2.2:8000/api/v1
 ```
 
-10.0.2.2 adalah alamat host untuk Android Emulator standar. HP fisik memakai IP LAN laptop; keduanya harus satu jaringan. URL `localhost` di HP menunjuk HP, bukan laptop. Internet permission disiapkan script. HTTP cleartext hanya di manifest debug; produksi harus HTTPS. Jika memakai opsi --profile/release, backend harus memakai HTTPS yang dipercaya perangkat.
+Alamat API tergantung perangkat:
 
-Sebelum distribusi nyata, ganti application ID sementara com.example.shipx dan siapkan signing sendiri. Jangan commit keystore atau API secret.
+| Perangkat | Alamat |
+| --- | --- |
+| Android Emulator | `10.0.2.2` |
+| HP fisik | IP LAN laptop (satu jaringan). `localhost` di HP menunjuk ke HP itu sendiri, bukan laptop |
 
-## Verifikasi
+Catatan:
 
-```powershell
-cd backend
-php artisan test
-php artisan route:list --path=api
-```
-
-Checkpoint master armada: 67 tes backend (1002 assertions), analyzer, TypeScript/build, empat skenario browser serta integration test HP I2405 lolos. Dari backend jalankan `npm.cmd run typecheck`; panduan browser QA ada di docs/ADMIN_UI_MIGRATION.md. Jalankan `flutter test` dari mobile untuk unit/widget. Tes MySQL terisolasi dari root: `php scripts/verify-checkout-mysql.php` dan `php scripts/verify-order-decisions-mysql.php`. Uji HP `mobile/integration_test/checkout_flow_test.dart` mencakup checkout, keputusan, pembatalan dan login kurir dengan database QA terpisah; setelah selesai aplikasi normal dikembalikan ke API utama.
+- HTTP cleartext hanya diizinkan di manifest debug. Produksi wajib HTTPS, dan mode `--profile`/release juga butuh backend HTTPS yang dipercaya perangkat.
+- Sebelum distribusi nyata, ganti application ID sementara `com.example.shipx` dan siapkan signing sendiri. Jangan commit keystore atau API secret.
 
 ## Akun staf dan web admin
 
-Jalankan `php artisan shipx:create-staff admin` atau `php artisan shipx:create-staff courier` dari backend hanya jika belum memiliki akun. Isi identitas dan password minimal 12 karakter secara interaktif. Admin masuk di `http://127.0.0.1:8000/admin/login`, lalu buka Produk, Stok atau Pesanan. Pesanan saat ini baca saja. Jalankan `php artisan schedule:work` pada terminal backend terpisah untuk expiry pending tiap menit; endpoint katalog/quote/order/stok juga membersihkan pending kedaluwarsa.
+Buat akun hanya jika belum punya (jalankan dari folder `backend`):
 
-## Perubahan lingkup v0.2
+```powershell
+php artisan shipx:create-staff admin
+php artisan shipx:create-staff courier
+```
 
-Acuan aktif adalah docs/PRD_ShipX.md, docs/ERD_ShipX.md, dan docs/API_PHASE_1.md. Dokumen history menyimpan rancangan lama khusus galon, bukan aturan implementasi. Model MVP sementara tetap katalog barang satu operator/depot; layanan pickup paket bebas dari banyak pengirim perlu keputusan produk tersendiri. Database lokal baru bernama shipx; tidak ada database lama yang diganti atau dihapus.
+Isi identitas dan password (minimal 12 karakter) secara interaktif.
+
+Admin masuk di `http://127.0.0.1:8000/admin/login`, lalu bisa membuka Produk, Stok, Pesanan, dan menu operasional lainnya. Catat stok awal lewat `/admin/stock` (saldo awal produk nol).
+
+Jalankan scheduler di terminal backend terpisah agar pesanan pending kedaluwarsa tiap menit:
+
+```powershell
+php artisan schedule:work
+```
+
+## Pengujian
+
+Dari folder `backend`:
+
+```powershell
+php artisan test
+php artisan route:list --path=api
+npm.cmd run typecheck
+```
+
+Dari folder `mobile`:
+
+```powershell
+flutter test
+```
+
+Dari root proyek (tes MySQL terisolasi):
+
+```powershell
+php scripts/verify-checkout-mysql.php
+php scripts/verify-order-decisions-mysql.php
+```
+
+Tes di HP fisik: `mobile/integration_test/checkout_flow_test.dart` mencakup checkout, keputusan admin, pembatalan, dan login kurir dengan database QA terpisah. Setelah selesai, kembalikan aplikasi ke API utama. Panduan QA browser ada di `docs/ADMIN_UI_MIGRATION.md`.
+
+## Dokumentasi
+
+Acuan aktif ada di tiga dokumen berikut:
+
+- [PRD_ShipX](docs/PRD_ShipX.md): tujuan, lingkup, dan alur bisnis
+- [ERD_ShipX](docs/ERD_ShipX.md): rancangan database
+- [API_PHASE_1](docs/API_PHASE_1.md): kontrak API fase pertama
+
+Folder `docs/history` menyimpan rancangan lama khusus galon. Isinya hanya riwayat, bukan aturan implementasi.
