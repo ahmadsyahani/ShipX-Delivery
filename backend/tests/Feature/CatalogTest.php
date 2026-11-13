@@ -26,6 +26,66 @@ class CatalogTest extends TestCase
         return $admin;
     }
 
+    public function test_grouped_catalog_orders_category_sections_before_pagination_and_scopes_category_choices(): void
+    {
+        $drink = $this->product(['name' => 'Air', 'category' => 'Minuman']);
+        $food = $this->product(['sku' => 'FOOD', 'name' => 'Zaitun', 'category' => 'Makanan']);
+        $customer = User::factory()->create();
+        $this->withToken($customer->createToken('grouped')->plainTextToken);
+        $this->getJson('/api/v1/catalog?per_page=1')->assertOk()->assertJsonPath('data.0.id', (string) $drink->id);
+        $this->getJson('/api/v1/catalog?grouped=1&per_page=1')->assertOk()->assertJsonPath('data.0.id', (string) $food->id)->assertJsonPath('categories', ['Makanan', 'Minuman']);
+        $this->getJson('/api/v1/catalog?grouped=1&per_page=1&page=2')->assertJsonPath('data.0.id', (string) $drink->id);
+        $this->getJson('/api/v1/catalog?grouped=1&q=Air')->assertJsonPath('categories', ['Minuman']);
+        $this->putJson('/api/v1/catalog/'.$food->id.'/favorite', ['is_favorite' => true])->assertOk();
+        $this->getJson('/api/v1/catalog?grouped=1&collection=favorites')->assertJsonPath('categories', ['Makanan'])->assertJsonCount(1, 'data');
+    }
+
+    public function test_favorites_are_persistent_idempotent_and_scoped_to_the_customer(): void
+    {
+        $product = $this->product();
+        $customer = User::factory()->create();
+        $this->withToken($customer->createToken('catalog')->plainTextToken);
+        $url = '/api/v1/catalog/'.$product->id.'/favorite';
+        $this->putJson($url, ['is_favorite' => true])->assertOk()->assertJsonPath('data.is_favorite', true);
+        $this->putJson($url, ['is_favorite' => true])->assertOk();
+        $this->assertDatabaseCount('product_favorites', 1);
+        $this->getJson('/api/v1/catalog?collection=favorites')->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.is_favorite', true);
+        $this->getJson('/api/v1/catalog?collection=favorites&q=missing')->assertJsonCount(0, 'data');
+        $this->app['auth']->forgetGuards();
+        $other = User::factory()->create();
+        $this->withToken($other->createToken('other')->plainTextToken);
+        $this->getJson('/api/v1/catalog?collection=favorites')->assertJsonCount(0, 'data');
+        $this->putJson($url, ['is_favorite' => false])->assertOk();
+        $this->assertDatabaseCount('product_favorites', 1);
+        $this->app['auth']->forgetGuards();
+        $this->withToken($customer->createToken('return')->plainTextToken);
+        $this->getJson('/api/v1/catalog')->assertJsonPath('data.0.is_favorite', true);
+        $this->putJson($url, ['is_favorite' => false])->assertOk();
+        $this->putJson($url, ['is_favorite' => false])->assertOk();
+        $this->assertDatabaseCount('product_favorites', 0);
+    }
+
+    public function test_favorites_validate_input_visibility_and_customer_access(): void
+    {
+        $product = $this->product();
+        $url = '/api/v1/catalog/'.$product->id.'/favorite';
+        $this->putJson($url, ['is_favorite' => true])->assertUnauthorized();
+        foreach (['admin', 'courier', 'customer'] as $role) {
+            $this->app['auth']->forgetGuards();
+            $user = User::factory()->create(['role' => $role, 'is_active' => $role !== 'customer']);
+            $this->withToken($user->createToken('denied')->plainTextToken)->putJson($url, ['is_favorite' => true])->assertForbidden();
+        }
+        $this->app['auth']->forgetGuards();
+        $customer = User::factory()->create();
+        $this->withToken($customer->createToken('allowed')->plainTextToken);
+        $this->putJson($url, ['is_favorite' => 'wrong'])->assertUnprocessable();
+        $this->getJson('/api/v1/catalog?collection=wrong')->assertUnprocessable();
+        $product->is_active = false;
+        $product->save();
+        $this->putJson($url, ['is_favorite' => true])->assertNotFound();
+        $this->assertDatabaseCount('product_favorites', 0);
+    }
+
     public function test_blank_or_missing_create_skus_are_generated_and_edit_keeps_existing_codes(): void
     {
         $this->admin();

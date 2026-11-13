@@ -274,6 +274,7 @@ class _CartPageState extends State<CartPage> {
                   ),
                   const SizedBox(height: 14),
                   AppPanel(
+                    key: const ValueKey('cart-payment-summary'),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -295,13 +296,10 @@ class _CartPageState extends State<CartPage> {
                           child: Divider(height: 1, color: AppColors.border),
                         ),
                         if (valid)
-                          Text(
-                            'Total COD ${rupiah(_quote!['total_rp'])}',
-                            style: const TextStyle(
-                              fontSize: 19,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: -0.6,
-                            ),
+                          CodTotal(
+                            key: const ValueKey('cart-cod-total'),
+                            amountKey: const ValueKey('cart-cod-amount'),
+                            amount: rupiah(_quote!['total_rp']),
                           ),
                         if (!valid)
                           const Text(
@@ -345,6 +343,40 @@ class _CartPageState extends State<CartPage> {
                               backgroundColor: AppColors.errorBg,
                             ),
                           ),
+                        if (state.pending == null) ...[
+                          const SizedBox(height: 16),
+                          FilledButton(
+                            key: const ValueKey('checkout-action'),
+                            style: FilledButton.styleFrom(
+                              shape: const StadiumBorder(),
+                              minimumSize: const Size(48, 44),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 18,
+                                vertical: 10,
+                              ),
+                            ),
+                            onPressed:
+                                state.locked ||
+                                    _quoting ||
+                                    (valid &&
+                                        _quote!['stock_available_now'] != true)
+                                ? null
+                                : !deliveryReady
+                                ? widget.chooseDelivery
+                                : valid
+                                ? _create
+                                : _calculate,
+                            child: Text(
+                              _quoting
+                                  ? 'Menghitung...'
+                                  : !deliveryReady
+                                  ? 'Atur pengiriman'
+                                  : valid
+                                  ? 'Pesan sekarang'
+                                  : 'Hitung total',
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -358,29 +390,6 @@ class _CartPageState extends State<CartPage> {
               ],
             ),
           ),
-          if (state.lines.isNotEmpty && state.pending == null)
-            ShopDock(
-              caption: valid ? 'Total pembayaran' : 'Subtotal sementara',
-              amount: rupiah(valid ? _quote!['total_rp'] as int : subtotal),
-              action: _quoting
-                  ? 'Menghitung...'
-                  : !deliveryReady
-                  ? 'Atur pengiriman'
-                  : valid
-                  ? 'Pesan sekarang'
-                  : 'Hitung total',
-              busy: state.busy || _quoting,
-              buttonKey: const ValueKey('checkout-action'),
-              onPressed:
-                  state.locked ||
-                      (valid && _quote!['stock_available_now'] != true)
-                  ? null
-                  : !deliveryReady
-                  ? widget.chooseDelivery
-                  : valid
-                  ? _create
-                  : _calculate,
-            ),
         ],
       );
     },

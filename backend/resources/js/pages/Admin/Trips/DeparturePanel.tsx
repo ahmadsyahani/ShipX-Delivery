@@ -56,6 +56,7 @@ export default function DeparturePanel({
     idempotencyKey: string;
 }) {
     const orders = trip.selected_route.input_snapshot.orders;
+    const optimization = trip.selected_route.input_snapshot.optimization;
     const labels = [
         ...orders.map(
             (o, i) =>
@@ -67,9 +68,14 @@ export default function DeparturePanel({
         idempotency_key: idempotencyKey,
         lock_version: trip.lock_version,
         leg_minutes: labels.map((_, i) =>
-            review ? String(review.leg_seconds[i] / 60) : "",
+            review
+                ? String(review.leg_seconds[i] / 60)
+                : optimization
+                  ? String(optimization.leg_seconds[i] / 60)
+                  : "",
         ),
-        source_reference: review?.source_reference ?? "",
+        source_reference:
+            review?.source_reference ?? optimization?.source_reference ?? "",
         reason: "",
         handling_checked: false,
     });
@@ -130,7 +136,7 @@ export default function DeparturePanel({
             {trip.status === "assigned" && (
                 <Section
                     title="Tinjau keberangkatan"
-                    description="Estimasi manual dari informasi jalan untuk mode kendaraan ini. Tidak memakai provider atau optimasi otomatis."
+                    description="Tinjau estimasi waktu jalan, sumber, serta penanganan barang sebelum berangkat."
                 >
                     <form
                         className="space-y-5"
@@ -144,8 +150,8 @@ export default function DeparturePanel({
                         <FormErrors errors={form.errors} />
                         <p className="text-sm text-muted-foreground">
                             Isi seluruh ruas sesuai urutan, termasuk pulang.
-                            Sistem memeriksa waktu tunggu dan jendela mulai
-                            layanan. Tinjauan berlaku 24 jam; jika rencana
+                            Sistem memeriksa waktu tunggu dan batas selesai
+                            pengiriman. Tinjauan berlaku 24 jam; jika rencana
                             berubah, tinjau ulang.
                         </p>
                         <div className="grid gap-4 sm:grid-cols-2">

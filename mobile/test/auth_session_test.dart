@@ -55,6 +55,10 @@ void main() {
         Uri.parse(api.path!).queryParameters.containsKey('category'),
         isFalse,
       );
+      await session.catalog(collection: 'favorites');
+      expect(Uri.parse(api.path!).queryParameters['collection'], 'favorites');
+      await session.catalog(grouped: true);
+      expect(Uri.parse(api.path!).queryParameters['grouped'], '1');
       session.dispose();
     },
   );

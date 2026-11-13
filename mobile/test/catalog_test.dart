@@ -38,6 +38,8 @@ class CatalogSession extends AuthSession {
   Future<Map<String, dynamic>> catalog({
     String query = '',
     String? category,
+    String collection = 'all',
+    bool grouped = false,
     int page = 1,
   }) => handler(query, page);
 }
@@ -50,10 +52,98 @@ class MenuSession extends AuthSession {
   Future<Map<String, dynamic>> catalog({
     String query = '',
     String? category,
+    String collection = 'all',
+    bool grouped = false,
     int page = 1,
   }) {
     requests.add((query: query, category: category, page: page));
     return handler(query, category, page);
+  }
+}
+
+class PersonalCatalogSession extends AuthSession {
+  final favorites = <String>{};
+  final collections = <String>[];
+  bool failSave = false;
+
+  @override
+  Future<Map<String, dynamic>> catalog({
+    String query = '',
+    String? category,
+    String collection = 'all',
+    bool grouped = false,
+    int page = 1,
+  }) async {
+    collections.add(collection);
+    final products = [
+      item('Air mineral')
+        ..addAll({'available_quantity': 3, 'customer_order_count': 2}),
+      item('Sabun')
+        ..addAll({'available_quantity': 3, 'customer_order_count': 0}),
+    ];
+    for (final product in products) {
+      product['is_favorite'] = favorites.contains(product['id']);
+    }
+    return {
+      'depot': {'name': 'Depot utama'},
+      'meta': {'current_page': 1, 'last_page': 1},
+      'data': products
+          .where(
+            (product) => collection == 'favorites'
+                ? product['is_favorite'] == true
+                : collection == 'frequent'
+                ? product['customer_order_count'] as int > 0
+                : true,
+          )
+          .toList(),
+      'categories': ['Minuman'],
+    };
+  }
+
+  @override
+  Future<Map<String, dynamic>> commerceRequest(
+    String method,
+    String path, {
+    Map<String, dynamic>? body,
+    String? key,
+    bool envelope = false,
+  }) async {
+    if (failSave) throw const HttpException('Offline');
+    final id = path.split('/')[2];
+    if (body!['is_favorite'] == true) {
+      favorites.add(id);
+    } else {
+      favorites.remove(id);
+    }
+    return {
+      'data': {'product_id': id, 'is_favorite': favorites.contains(id)},
+    };
+  }
+}
+
+class RankedCatalogSession extends AuthSession {
+  bool? lastGrouped;
+  String? lastCollection;
+  @override
+  Future<Map<String, dynamic>> catalog({
+    String query = '',
+    String? category,
+    String collection = 'all',
+    bool grouped = false,
+    int page = 1,
+  }) async {
+    lastGrouped = grouped;
+    lastCollection = collection;
+    return {
+      'meta': {'current_page': 1, 'last_page': 1},
+      'depot': {'name': 'Depot utama'},
+      'categories': ['A', 'Z'],
+      'data': [
+        item('Teratas')..addAll({'category': 'Z', 'customer_order_count': 8}),
+        item('Kedua')..addAll({'category': 'A', 'customer_order_count': 4}),
+        item('Ketiga')..addAll({'category': 'Z', 'customer_order_count': 2}),
+      ],
+    };
   }
 }
 
@@ -67,7 +157,121 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  testWidgets('star directly opens frequent products in global order', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(820, 1800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final session = RankedCatalogSession();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: CatalogPage(session: session)),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Paling sering dipesan'));
+    await tester.pumpAndSettle();
+    expect(session.lastCollection, 'frequent');
+    expect(session.lastGrouped, false);
+    expect(find.text('Paling sering dipesan'), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.text('Teratas')).dy,
+      tester.getTopLeft(find.text('Kedua')).dy,
+    );
+    expect(
+      tester.getTopLeft(find.text('Ketiga')).dy,
+      greaterThan(tester.getTopLeft(find.text('Kedua')).dy),
+    );
+    await tester.ensureVisible(find.byKey(const ValueKey('category-all')));
+    await tester.tap(find.byKey(const ValueKey('category-all')));
+    await tester.pumpAndSettle();
+    expect(session.lastCollection, 'all');
+    expect(session.lastGrouped, true);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'favorites survive reopening and collection filters reach the session',
+    (tester) async {
+      tester.view.physicalSize = const Size(800, 1200);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final session = PersonalCatalogSession();
+      Widget screen() => MaterialApp(
+        home: Scaffold(body: CatalogPage(session: session)),
+      );
+      await tester.pumpWidget(screen());
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Favoritkan Air mineral'));
+      await tester.pumpAndSettle();
+      expect(session.favorites, {'Air mineral'});
+      expect(find.byTooltip('Hapus Air mineral dari favorit'), findsOneWidget);
+      await tester.tap(
+        find.byKey(const ValueKey('catalog-collection-favorites')),
+      );
+      await tester.pumpAndSettle();
+      expect(session.collections.last, 'favorites');
+      expect(find.text('Air mineral'), findsOneWidget);
+      expect(find.text('Sabun'), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpWidget(screen());
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('Hapus Air mineral dari favorit'), findsOneWidget);
+      await tester.tap(
+        find.byKey(const ValueKey('catalog-collection-frequent')),
+      );
+      await tester.pumpAndSettle();
+      expect(session.collections.last, 'frequent');
+      expect(find.text('Sabun'), findsNothing);
+      await tester.tap(
+        find.byKey(const ValueKey('catalog-collection-favorites')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Hapus Air mineral dari favorit'));
+      await tester.pumpAndSettle();
+      expect(session.favorites, isEmpty);
+      expect(find.text('Belum ada barang favorit'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'failed favorite save retains previous state and can be retried',
+    (tester) async {
+      tester.view.physicalSize = const Size(800, 1200);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final session = PersonalCatalogSession()..failSave = true;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: CatalogPage(session: session)),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Favoritkan Air mineral'));
+      await tester.pumpAndSettle();
+      expect(session.favorites, isEmpty);
+      expect(
+        find.text('Favorit belum dapat disimpan. Coba lagi.'),
+        findsOneWidget,
+      );
+      session.failSave = false;
+      await tester.tap(find.byTooltip('Favoritkan Air mineral'));
+      await tester.pumpAndSettle();
+      expect(session.favorites, {'Air mineral'});
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('catalog shows prices and opens product details', (tester) async {
+    tester.view.physicalSize = const Size(800, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     await mount(tester, CatalogSession((q, p) async => page(['Air mineral'])));
     expect(find.text('Rp15.000'), findsOneWidget);
     await tester.tap(find.text('Air mineral'));
@@ -83,8 +287,14 @@ void main() {
   testWidgets('empty and no-result states offer useful recovery', (
     tester,
   ) async {
+    tester.view.physicalSize = const Size(800, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     await mount(tester, CatalogSession((q, p) async => page([])));
     expect(find.text('Katalog sedang disiapkan'), findsOneWidget);
+    await tester.tap(find.byTooltip('Cari barang'));
+    await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), 'tidak ada');
     await tester.testTextInput.receiveAction(TextInputAction.search);
     await tester.pumpAndSettle();
@@ -99,6 +309,10 @@ void main() {
   testWidgets(
     'a failed refresh retries page one rather than skipping products',
     (tester) async {
+      tester.view.physicalSize = const Size(800, 1200);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
       final requests = <int>[];
       await mount(
         tester,
@@ -123,6 +337,10 @@ void main() {
   testWidgets('stale search responses cannot replace the latest query', (
     tester,
   ) async {
+    tester.view.physicalSize = const Size(800, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     final pending = Completer<Map<String, dynamic>>();
     await mount(
       tester,
@@ -132,6 +350,8 @@ void main() {
             : Future.value(page([q.isEmpty ? 'Awal' : 'Terbaru'])),
       ),
     );
+    await tester.tap(find.byTooltip('Cari barang'));
+    await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), 'lama');
     await tester.testTextInput.receiveAction(TextInputAction.search);
     await tester.pump();
@@ -144,7 +364,13 @@ void main() {
     expect(find.text('Lama'), findsNothing);
   });
 
-  testWidgets('pagination appends subsequent products', (tester) async {
+  testWidgets('short catalog pages automatically load subsequent products', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(800, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     await mount(
       tester,
       CatalogSession(
@@ -152,10 +378,6 @@ void main() {
             page([p == 1 ? 'Pertama' : 'Kedua'], current: p, last: 2),
       ),
     );
-    await tester.ensureVisible(find.text('Muat produk lainnya'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Muat produk lainnya'));
-    await tester.pumpAndSettle();
     expect(find.text('Pertama'), findsOneWidget);
     expect(find.text('Kedua'), findsOneWidget);
     expect(find.text('Muat produk lainnya'), findsNothing);
@@ -164,6 +386,10 @@ void main() {
   testWidgets('long product names fit narrow screens with large text', (
     tester,
   ) async {
+    tester.view.physicalSize = const Size(800, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     tester.view.physicalSize = const Size(320, 740);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -184,64 +410,27 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets(
-    'category selection queries the server and keeps pagination scoped',
-    (tester) async {
-      final session = MenuSession(
-        (q, category, p) async => {
-          ...page(
-            [category == 'Kebersihan' ? 'Sabun $p' : 'Air mineral'],
-            current: p,
-            last: 2,
-          ),
-          'categories': ['Kebersihan', 'Minuman'],
-        },
-      );
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(body: CatalogPage(session: session)),
-        ),
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('category-Kebersihan')));
-      await tester.pumpAndSettle();
-      expect(session.requests.last.category, 'Kebersihan');
-      expect(find.text('Air mineral'), findsNothing);
-      expect(find.text('Sabun 1'), findsOneWidget);
-      await tester.ensureVisible(find.text('Muat produk lainnya'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Muat produk lainnya'));
-      await tester.pumpAndSettle();
-      expect(session.requests.last, (
-        query: '',
-        category: 'Kebersihan',
-        page: 2,
-      ));
-      expect(find.text('Sabun 1'), findsOneWidget);
-      expect(find.text('Sabun 2'), findsOneWidget);
-      await tester.enterText(find.byType(TextField), 'mineral');
-      await tester.testTextInput.receiveAction(TextInputAction.search);
-      await tester.pumpAndSettle();
-      expect(session.requests.last, (
-        query: 'mineral',
-        category: null,
-        page: 1,
-      ));
-    },
-  );
-
-  testWidgets('late category response cannot replace a newer category', (
+  testWidgets('category pills jump across pages and track vertical scrolling', (
     tester,
   ) async {
-    final old = Completer<Map<String, dynamic>>();
-    Map<String, dynamic> result(String name) => {
-      ...page([name]),
-      'categories': ['Minuman', 'Makanan'],
-    };
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     final session = MenuSession(
-      (q, category, p) => category == 'Minuman'
-          ? old.future
-          : Future.value(result('Menu ${category ?? 'Awal'}')),
+      (q, category, p) async => {
+        ...page([], current: p, last: 2),
+        'data': p == 1
+            ? List.generate(
+                8,
+                (i) => item('Makanan $i')..['category'] = 'Makanan',
+              )
+            : List.generate(
+                4,
+                (i) => item('Minuman $i')..['category'] = 'Minuman',
+              ),
+        'categories': ['Makanan', 'Minuman'],
+      },
     );
     await tester.pumpWidget(
       MaterialApp(
@@ -249,25 +438,109 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const ValueKey('category-Minuman')));
+    await tester.tap(find.byKey(const ValueKey('category-Minuman')));
+    await tester.pumpAndSettle();
+    expect(session.requests.last.page, 2);
+    expect(session.requests.last.category, isNull);
+    expect(
+      tester
+          .widget<ChoiceChip>(find.byKey(const ValueKey('category-Minuman')))
+          .selected,
+      isTrue,
+    );
+    final products = find
+        .descendant(
+          of: find.byKey(const ValueKey('catalog-products')),
+          matching: find.byType(Scrollable),
+        )
+        .first;
+    tester.state<ScrollableState>(products).position.jumpTo(0);
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<ChoiceChip>(find.byKey(const ValueKey('category-all')))
+          .selected,
+      isTrue,
+    );
+    final section = find.descendant(
+      of: find.byKey(const ValueKey('catalog-products')),
+      matching: find.byKey(const ValueKey('section-heading-Minuman')),
+    );
+    await tester.ensureVisible(section);
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<ChoiceChip>(find.byKey(const ValueKey('category-Minuman')))
+          .selected,
+      isTrue,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('search cancels a pending jump to an unloaded category', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final old = Completer<Map<String, dynamic>>();
+    final session = MenuSession((q, category, p) {
+      if (q.isNotEmpty) {
+        return Future.value({
+          ...page(['Terbaru']),
+          'categories': ['Minuman'],
+        });
+      }
+      if (p == 2) return old.future;
+      return Future.value({
+        ...page([], last: 2),
+        'data': List.generate(
+          8,
+          (i) => item('Makanan $i')..['category'] = 'Makanan',
+        ),
+        'categories': ['Makanan', 'Minuman'],
+      });
+    });
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: CatalogPage(session: session)),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const ValueKey('category-Minuman')));
     await tester.tap(find.byKey(const ValueKey('category-Minuman')));
     await tester.pump();
-    await tester.tap(find.byKey(const ValueKey('category-Makanan')));
+    await tester.tap(find.byTooltip('Cari barang'));
+    await tester.pump();
+    await tester.enterText(find.byType(TextField), 'baru');
     await tester.pumpAndSettle();
-    old.complete(result('Respons lama'));
+    old.complete({
+      ...page(['Respons lama'], current: 2, last: 2),
+      'categories': ['Minuman'],
+    });
     await tester.pumpAndSettle();
+    expect(find.text('Terbaru'), findsOneWidget);
     expect(find.text('Respons lama'), findsNothing);
-    expect(session.requests.last.category, 'Makanan');
-    expect(find.text('Menu Makanan'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets(
-    'category rail scrolls independently to categories beyond the viewport',
+    'scrolling reveals the selected pill beyond the horizontal viewport',
     (tester) async {
-      final categories = List.generate(25, (i) => 'Kategori $i');
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final categories = List.generate(12, (i) => 'Kategori $i');
       final session = MenuSession(
         (q, category, p) async => {
-          ...page([category ?? 'Produk awal']),
+          ...page([]),
           'categories': categories,
+          'data': categories
+              .map((c) => item('Barang $c')..['category'] = c)
+              .toList(),
         },
       );
       await tester.pumpWidget(
@@ -276,24 +549,15 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      final rail = find.descendant(
-        of: find.byKey(const ValueKey('catalog-categories')),
-        matching: find.byType(Scrollable),
-      );
-      await tester.scrollUntilVisible(
-        find.byKey(const ValueKey('category-Kategori 24')),
-        300,
-        scrollable: rail,
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('category-Kategori 24')));
-      await tester.pumpAndSettle();
-      expect(session.requests.last.category, 'Kategori 24');
-      final products = find.descendant(
+      final section = find.descendant(
         of: find.byKey(const ValueKey('catalog-products')),
-        matching: find.byType(Scrollable),
+        matching: find.byKey(const ValueKey('section-heading-Kategori 10')),
       );
-      expect(tester.state<ScrollableState>(products).position.pixels, 0);
+      await tester.ensureVisible(section);
+      await tester.pumpAndSettle();
+      final pill = find.byKey(const ValueKey('category-Kategori 10'));
+      expect(tester.widget<ChoiceChip>(pill).selected, isTrue);
+      expect(pill.hitTestable(), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
@@ -301,6 +565,10 @@ void main() {
   testWidgets(
     'quick add updates cart and respects sold-out and pending-request locks',
     (tester) async {
+      tester.view.physicalSize = const Size(800, 1200);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
       final session = MenuSession(
         (q, category, p) async => {
           ...page([]),
@@ -329,14 +597,77 @@ void main() {
       await tester.tap(find.byTooltip('Tambah Air mineral'));
       await tester.pumpAndSettle();
       expect(shopping.count, 1);
-      expect(find.byKey(const ValueKey('catalog-checkout')), findsOneWidget);
+      final quantityLabel = find.byKey(
+        const ValueKey('catalog-quantity-Air mineral'),
+      );
+      expect(tester.widget<Text>(quantityLabel).data, '1');
+      await tester.tap(find.byTooltip('Tambah Air mineral'));
+      await tester.pumpAndSettle();
+      expect(tester.widget<Text>(quantityLabel).data, '2');
+      expect(shopping.count, 2);
+      await tester.tap(find.byTooltip('Kurangi Air mineral'));
+      await tester.pumpAndSettle();
+      expect(tester.widget<Text>(quantityLabel).data, '1');
+      await tester.tap(find.byTooltip('Kurangi Air mineral'));
+      await tester.pumpAndSettle();
+      expect(shopping.count, 0);
+      expect(find.byTooltip('Kurangi Air mineral'), findsNothing);
+      expect(find.byKey(const ValueKey('catalog-checkout')), findsNothing);
+      await tester.tap(find.byTooltip('Tambah Air mineral'));
+      await tester.pumpAndSettle();
+      shopping.quantity('Air mineral', 20);
+      await tester.pumpAndSettle();
       expect(
         tester
             .widget<IconButton>(
-              find.widgetWithIcon(IconButton, Icons.add_rounded).last,
+              find
+                  .ancestor(
+                    of: find.byTooltip('Tambah Air mineral'),
+                    matching: find.byType(IconButton),
+                  )
+                  .first,
             )
             .onPressed,
         isNull,
+      );
+      await tester.tap(find.byTooltip('Kurangi Air mineral'));
+      await tester.pumpAndSettle();
+      expect(shopping.count, 19);
+      shopping.quantity('Air mineral', 1);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('catalog-checkout')), findsOneWidget);
+      expect(
+        tester.getSize(find.byKey(const ValueKey('catalog-checkout'))).height,
+        lessThanOrEqualTo(48),
+      );
+      final productsScroll = find
+          .descendant(
+            of: find.byKey(const ValueKey('catalog-products')),
+            matching: find.byType(Scrollable),
+          )
+          .first;
+      await tester.scrollUntilVisible(
+        find.byTooltip('Tambah Stok kosong'),
+        150,
+        scrollable: productsScroll,
+      );
+      expect(
+        tester
+            .widget<IconButton>(
+              find
+                  .ancestor(
+                    of: find.byTooltip('Tambah Stok kosong'),
+                    matching: find.byType(IconButton),
+                  )
+                  .first,
+            )
+            .onPressed,
+        isNull,
+      );
+      await tester.scrollUntilVisible(
+        find.byTooltip('Tambah Air mineral'),
+        -150,
+        scrollable: productsScroll,
       );
       shopping.pending = {'pending': true};
       shopping.notifyListeners();
@@ -344,7 +675,25 @@ void main() {
       expect(
         tester
             .widget<IconButton>(
-              find.widgetWithIcon(IconButton, Icons.add_rounded).first,
+              find
+                  .ancestor(
+                    of: find.byTooltip('Tambah Air mineral'),
+                    matching: find.byType(IconButton),
+                  )
+                  .first,
+            )
+            .onPressed,
+        isNull,
+      );
+      expect(
+        tester
+            .widget<IconButton>(
+              find
+                  .ancestor(
+                    of: find.byTooltip('Kurangi Air mineral'),
+                    matching: find.byType(IconButton),
+                  )
+                  .first,
             )
             .onPressed,
         isNull,

@@ -1,5 +1,7 @@
 # Konfirmasi muatan dan start trip — 5 November 2026
 
+Pembaruan13November2026, jadwal memeriksa selesai layanan <=akhir slot dan jam tutup, serta keberangkatan dalam jam operasional. Rute draft bisa dioptimasi dengan matriks jalan manual lengkap. Ruas rute terpilih mengisi form tinjauan, lalu admin meninjau penanganan seperti biasa. Rincian di API_PHASE_1.md bagian Optimasi satu trip. Catatan lama di bawah yang memakai batas mulai layanan mencerminkan checkpoint sebelumnya.
+
 Checkpoint ini melanjutkan MANUAL_TRIPS_CHECKPOINT.md. Pengguna secara eksplisit memilih **estimasi waktu jalan manual dengan sumber dan tinjauan admin** untuk tahap ini. Ini perubahan kebijakan sementara dari prasyarat provider pada rancangan awal; tidak ada integrasi provider, matriks otomatis, optimasi atau estimasi garis lurus yang disisipkan.
 
 Migration `2026_11_04_000008_create_trip_departures` sudah Ran di MySQL lokal, tanpa reset atau fixture bisnis. Perubahan masih lokal pada `develop` bersama checkpoint sebelumnya; belum commit/push. `.env` tetap SHA-256 `DBE59869C14B1BC0436EA8085AA62B37D8860FB6395E8995AF0C37D81CA7D24C`.

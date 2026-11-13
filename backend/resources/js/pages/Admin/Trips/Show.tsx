@@ -31,6 +31,8 @@ import ReconciliationPanel, {
     type ReturnProduct,
 } from "./ReconciliationPanel";
 
+import OptimizationPanel from "./OptimizationPanel";
+
 type Action = "assign" | "reopen" | "cancel";
 const labels: Record<Action, string> = {
     assign: "Tetapkan trip",
@@ -55,7 +57,7 @@ export default function TripDetail({
         created_at: string;
         trip_version: number;
     }[];
-    actionKeys: Record<Action | "review" | "reconcile", string>;
+    actionKeys: Record<Action | "review" | "reconcile" | "optimize", string>;
     manifest: ManifestRow[];
     departureReview: DepartureReview | null;
     departureSchedule: Schedule | null;
@@ -105,9 +107,18 @@ export default function TripDetail({
                           ? "Trip sudah berangkat; stok dimuat ke akun trip. Hasil tiap pesanan dan COD dicatat kurir. Rekonsiliasi dilakukan setelah kembali ke depot."
                           : departureReview
                             ? "Jadwal dihitung dari estimasi jalan manual yang ditinjau admin. Kurir menghitung muatan dan memulai trip; stok masih di depot sampai start berhasil."
-                            : "Urutan manual belum memiliki tinjauan waktu jalan. Admin perlu meninjau sebelum kurir menghitung muatan dan memulai trip."}
+                            : snap.optimization
+                              ? "Urutan berasal dari optimasi estimasi jalan. Tetapkan trip, lalu tinjau waktu jalan dan penanganan sebelum berangkat."
+                              : "Simpan rekomendasi urutan atau tinjau urutan manual sebelum keberangkatan."}
                 </AlertDescription>
             </Alert>
+            {trip.status === "draft" && (
+                <OptimizationPanel
+                    key={`${trip.selected_route.id}-${trip.lock_version}`}
+                    trip={trip}
+                    idempotencyKey={actionKeys.optimize}
+                />
+            )}
             <Section title="Penugasan">
                 <div className="grid gap-5 text-sm sm:grid-cols-2">
                     <div>
@@ -208,6 +219,8 @@ export default function TripDetail({
                                         className="break-all font-semibold text-primary underline"
                                     >
                                         {o.order_number}
+                                        {o.delivery_type === "express" &&
+                                            " · Express"}
                                     </Link>
                                     <p className="mt-2 font-medium">
                                         {o.address.recipient_name} ·{" "}

@@ -45,9 +45,29 @@ class AdminTripController extends Controller
 
     private function form(?Trip $trip = null)
     {
+        $depot = Depot::findOrFail(1);
+        $orders = Order::where('depot_id', 1)->where('status', 'confirmed')->where('window_end_at', '>', now())
+            ->whereNotIn('id', DB::table('active_order_allocations')->select('order_id'))->orderBy('window_start_at')->orderBy('id')
+            ->get(['id', 'order_number', 'delivery_slot_id', 'recipient_name', 'address_text', 'window_start_at', 'window_end_at', 'total_weight_g', 'total_volume_cm3', 'delivery_type', 'lock_version']);
+        $groups = $orders->groupBy(fn ($order) => $order->delivery_slot_id.'|'.$order->window_start_at->toISOString().'|'.$order->window_end_at->toISOString())
+            ->map(function ($members, $key) use ($depot) {
+                $first = $members->first();
+                $date = $first->window_start_at->setTimezone($depot->timezone)->toDateString();
+                [$opens, $closes] = app(\App\Services\DeliveryPolicy::class)->bounds($depot, $date);
+                $default = $first->window_start_at->max(CarbonImmutable::instance(now())->ceilMinute())->max($opens);
+
+                return ['key' => $key, 'delivery_slot_id' => $first->delivery_slot_id, 'service_date' => $date,
+                    'window_start_at' => $first->window_start_at->toISOString(), 'window_end_at' => $first->window_end_at->toISOString(),
+                    'opens_at' => $opens->setTimezone($depot->timezone)->format('H:i'),
+                    'latest_departure' => $first->window_end_at->min($closes)->subMinute()->setTimezone($depot->timezone)->format('H:i'),
+                    'default_departure_local' => $default->setTimezone($depot->timezone)->format('Y-m-d\TH:i'),
+                    'order_count' => $members->count(), 'express_count' => $members->where('delivery_type', 'express')->count(),
+                    'regular_count' => $members->where('delivery_type', 'regular')->count()];
+            })->values();
+
         return Inertia::render('Admin/Trips/Form', [
-            'trip' => $trip?->load('selectedRoute'), 'timezone' => Depot::findOrFail(1)->timezone, 'idempotencyKey' => Str::uuid()->toString(),
-            'orders' => Order::where('depot_id', 1)->where('status', 'confirmed')->where('window_end_at', '>', now())->whereNotIn('id', DB::table('active_order_allocations')->select('order_id'))->orderBy('window_start_at')->orderBy('id')->get(['id', 'order_number', 'delivery_slot_id', 'recipient_name', 'address_text', 'window_start_at', 'window_end_at', 'total_weight_g', 'total_volume_cm3', 'lock_version']),
+            'trip' => $trip?->load('selectedRoute'), 'timezone' => $depot->timezone, 'idempotencyKey' => Str::uuid()->toString(),
+            'orders' => $orders, 'deliveryGroups' => $groups,
             'couriers' => User::where('role', 'courier')->where('is_active', true)->whereNotIn('id', DB::table('courier_trip_locks')->select('courier_id'))->orderBy('name')->get(['id', 'name']),
             'vehicles' => Vehicle::where('depot_id', 1)->where('is_active', true)->whereNotIn('id', DB::table('vehicle_trip_locks')->select('vehicle_id'))->orderBy('code')->get(),
         ]);
@@ -64,7 +84,7 @@ class AdminTripController extends Controller
 
         $load = DB::table('trip_load_confirmations')->where('trip_id', $trip->id)->first();
 
-        return Inertia::render('Admin/Trips/Show', ['trip' => $trip->load(['selectedRoute', 'routes']), 'events' => $events, 'actionKeys' => collect(['assign', 'reopen', 'cancel', 'review', 'reconcile'])->mapWithKeys(fn ($a) => [$a => Str::uuid()->toString()]), 'manifest' => app(TripManifestService::class)->forTrip($trip), 'departureReview' => app(TripDepartureReviewService::class)->current($trip), 'departureSchedule' => $load ? json_decode($load->departure_schedule, true, flags: JSON_THROW_ON_ERROR) : null,
+        return Inertia::render('Admin/Trips/Show', ['trip' => $trip->load(['selectedRoute', 'routes']), 'events' => $events, 'actionKeys' => collect(['assign', 'reopen', 'cancel', 'review', 'reconcile', 'optimize'])->mapWithKeys(fn ($a) => [$a => Str::uuid()->toString()]), 'manifest' => app(TripManifestService::class)->forTrip($trip), 'departureReview' => app(TripDepartureReviewService::class)->current($trip), 'departureSchedule' => $load ? json_decode($load->departure_schedule, true, flags: JSON_THROW_ON_ERROR) : null,
             'reconciliation' => in_array($trip->status, ['awaiting_reconciliation', 'completed'], true) ? app(TripReconciliationService::class)->summary($trip) : null,
             'returnProducts' => $trip->status === 'awaiting_reconciliation' ? \App\Models\Product::where('depot_id', 1)->orderBy('name')->get(['id', 'name', 'sku']) : [],
         ]);

@@ -30,6 +30,10 @@ Route::middleware(['auth:web', 'active.role:admin'])->prefix('admin')->group(fun
     Route::post('orders/{order}/reject', [AdminOrderController::class, 'reject'])->name('admin.orders.reject');
     Route::get('depot', [DepotController::class, 'edit'])->name('admin.depot.edit');
     Route::put('depot', [DepotController::class, 'update'])->name('admin.depot.update');
+    Route::post('slots/prepare', function () {
+        $count = app(\App\Services\DeliveryScheduleGenerator::class)->generate();
+        return redirect()->route('admin.slots.index')->with('status', "$count slot untuk 14 hari ke depan disiapkan.");
+    })->name('admin.slots.prepare');
     Route::resource('slots', AdminDeliverySlotController::class)->parameters(['slots' => 'slot'])->only(['index', 'create', 'store', 'edit', 'update'])->names('admin.slots');
     Route::resource('products', ProductController::class)->only(['index', 'create', 'store', 'edit', 'update'])->names('admin.products');
     Route::resource('couriers', CourierController::class)->parameters(['couriers' => 'courier'])->only(['index', 'create', 'store', 'edit', 'update'])->names('admin.couriers');
@@ -38,6 +42,8 @@ Route::middleware(['auth:web', 'active.role:admin'])->prefix('admin')->group(fun
     Route::get('delivery-proofs/{proof}', [\App\Http\Controllers\DeliveryProofController::class, 'show'])->whereNumber('proof');
     Route::resource('trips', \App\Http\Controllers\AdminTripController::class)->only(['index', 'create', 'store', 'show', 'edit', 'update'])->names('admin.trips');
     Route::post('trips/{trip}/{action}', [\App\Http\Controllers\AdminTripController::class, 'action'])->where('action', 'assign|reopen|cancel')->name('admin.trips.action');
+    Route::post('trips/{trip}/optimization/preview', [\App\Http\Controllers\TripOptimizationController::class, 'preview'])->name('admin.trips.optimization.preview');
+    Route::post('trips/{trip}/optimization/apply', [\App\Http\Controllers\TripOptimizationController::class, 'apply'])->name('admin.trips.optimization.apply');
     Route::post('trips/{trip}/departure-review', [\App\Http\Controllers\AdminTripController::class, 'review'])->name('admin.trips.review');
     Route::post('trips/{trip}/reconcile', [\App\Http\Controllers\AdminTripController::class, 'reconcile'])->name('admin.trips.reconcile');
 });

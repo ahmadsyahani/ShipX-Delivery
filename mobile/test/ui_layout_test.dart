@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -13,8 +14,13 @@ import 'package:shipx/core/auth_session.dart';
 import 'package:shipx/commerce/orders_page.dart';
 import 'package:shipx/commerce/cart_page.dart';
 import 'package:shipx/commerce/shopping_state.dart';
+import 'package:shipx/commerce/shop_widgets.dart';
 import 'package:shipx/delivery/delivery_page.dart';
 import 'package:shipx/delivery/address_form.dart';
+import 'package:shipx/courier/trip_overview.dart';
+import 'package:shipx/courier/trip_navigation_page.dart';
+import 'local_navigation_page_test.dart'
+    show RouteSession, RouteLocation, MemoryTiles;
 
 import 'catalog_test.dart' show CatalogSession, item;
 import 'courier_trips_test.dart' show TripSession, trip;
@@ -160,6 +166,30 @@ void main() {
       final courier = _LongTripSession();
       await mount(RoleHome(session: courier));
       await snapshot('courier');
+      final courierTrip = trip()..['status'] = 'in_progress';
+      await mount(
+        Scaffold(
+          body: SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: TripOverview(trip: courierTrip, session: courier),
+          ),
+        ),
+      );
+      await snapshot('courier-overview');
+      final routeSession = RouteSession();
+      final routeLocation = RouteLocation();
+      await mount(
+        TripNavigationPage(
+          session: routeSession,
+          tripId: '9',
+          location: routeLocation,
+          tileProvider: MemoryTiles(),
+        ),
+      );
+      await snapshot('courier-navigation');
+      await tester.pumpWidget(const SizedBox.shrink());
+      unawaited(routeLocation.updates.close());
+      routeSession.dispose();
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pumpAndSettle();
 
@@ -171,6 +201,9 @@ void main() {
         ),
       );
       await snapshot('customer');
+      await tester.tap(find.text('Lihat katalog'));
+      await tester.pumpAndSettle();
+      await snapshot('home-catalog');
       await tester.scrollUntilVisible(
         find.byTooltip('Tambah Air mineral kemasan'),
         160,
@@ -195,6 +228,14 @@ void main() {
         tester.view.resetViewInsets();
         await tester.pumpAndSettle();
       }
+      await tester.tap(
+        find.descendant(
+          of: find.byType(NavigationBar),
+          matching: find.text('Keranjang'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await snapshot('checkout-delivery');
       for (final label in ['Pengiriman', 'Keranjang', 'Akun']) {
         await tester.tap(
           find.descendant(
@@ -242,7 +283,13 @@ void main() {
           await snapshot('pengiriman-selected');
           await tester.tap(find.text('Lanjut ke keranjang'));
           await tester.pumpAndSettle();
-          expect(find.text('Pesanan'), findsOneWidget);
+          expect(
+            find.descendant(
+              of: find.byType(CartPage),
+              matching: find.text('Pesanan'),
+            ),
+            findsOneWidget,
+          );
         }
         if (label == 'Keranjang') {
           final scroll = find
@@ -293,9 +340,19 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
       await snapshot('order-detail');
-      await tester.scrollUntilVisible(find.text('Total COD Rp48.000'), 180);
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('order-cod-total')),
+        180,
+      );
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
+      final codAmount = find.byKey(const ValueKey('order-cod-amount'));
+      expect(tester.widget<Text>(codAmount).data, 'Rp48.000');
+      expect(tester.widget<Text>(codAmount).textAlign, TextAlign.right);
+      expect(
+        tester.widget<Text>(codAmount).style?.color,
+        AppColors.primaryDark,
+      );
       await snapshot('order-payment');
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pumpAndSettle();
@@ -311,6 +368,101 @@ void main() {
     });
   }
   testWidgets(
+    'Home opens catalog while Home stays selected and history has its own tab',
+    (tester) async {
+      final session = _CustomerSession();
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.theme,
+          home: RoleHome(
+            session: session,
+            pendingStoreFactory: (_) => MemoryPending(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Lihat katalog'), findsOneWidget);
+      await tester.tap(find.text('Lihat katalog'));
+      await tester.pumpAndSettle();
+      expect(find.byType(CatalogPage), findsOneWidget);
+      expect(tester.widget<Text>(find.text('Katalog')).style?.fontSize, 18);
+      expect(
+        tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex,
+        0,
+      );
+      expect(find.text('Home'), findsOneWidget);
+      await tester.tap(
+        find.descendant(
+          of: find.byType(NavigationBar),
+          matching: find.text('Pesanan'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Riwayat pesanan'), findsOneWidget);
+      expect(
+        tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex,
+        3,
+      );
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      session.dispose();
+    },
+  );
+
+  testWidgets('checkout and delivery buttons share balanced dock geometry', (
+    tester,
+  ) async {
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    tester.view.devicePixelRatio = 1;
+    for (final width in [320.0, 375.0, 390.0, 820.0]) {
+      tester.view.physicalSize = Size(width, 844);
+      for (final scale in [1.0, 1.5]) {
+        Rect? checkout;
+        for (final action in ['Checkout', 'Atur pengiriman']) {
+          var pressed = false;
+          await tester.pumpWidget(
+            MaterialApp(
+              theme: AppTheme.theme,
+              builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(
+                  context,
+                ).copyWith(textScaler: TextScaler.linear(scale)),
+                child: child!,
+              ),
+              home: Scaffold(
+                bottomNavigationBar: ShopDock(
+                  caption: 'Subtotal sementara',
+                  amount: 'Rp150.000',
+                  action: action,
+                  icon: action == 'Checkout'
+                      ? Icons.arrow_forward_rounded
+                      : null,
+                  buttonKey: const ValueKey('dock-geometry-action'),
+                  onPressed: () => pressed = true,
+                ),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          final button = find.byKey(const ValueKey('dock-geometry-action'));
+          final rect = tester.getRect(button);
+          expect(rect.right, closeTo(width - 20, .1));
+          expect(rect.height, greaterThanOrEqualTo(52));
+          expect(tester.getTopLeft(find.text('Subtotal sementara')).dx, 20);
+          if (checkout != null) {
+            expect(rect, checkout);
+          }
+          checkout = rect;
+          await tester.tap(button);
+          expect(pressed, isTrue);
+          expect(tester.takeException(), isNull);
+        }
+      }
+    }
+  });
+
+  testWidgets(
     'delivery sheet commits only confirmed selection and retains a valid choice on reopen',
     (tester) async {
       final session = _CustomerSession();
@@ -324,10 +476,12 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      await tester.tap(find.text('Lihat katalog'));
+      await tester.pumpAndSettle();
       final shopping = tester
           .widget<CatalogPage>(find.byType(CatalogPage))
           .shopping!;
-      await tester.tap(find.text('Pilih alamat pengiriman'));
+      await tester.tap(find.text('Lokasimu saat ini'));
       await tester.pumpAndSettle();
       expect(find.byType(DeliveryPage), findsOneWidget);
       await tester.scrollUntilVisible(
@@ -360,7 +514,7 @@ void main() {
       await tester.tap(find.byTooltip('Tutup pilihan pengiriman'));
       await tester.pumpAndSettle();
       expect(shopping.address, isNull);
-      await tester.tap(find.text('Pilih alamat pengiriman'));
+      await tester.tap(find.text('Lokasimu saat ini'));
       await tester.pumpAndSettle();
       await tester.scrollUntilVisible(
         find.text('Pilih alamat'),
@@ -393,7 +547,7 @@ void main() {
       expect(shopping.slot?['timezone'], 'Asia/Jayapura');
       expect(shopping.lastOrder, isNull);
       final fingerprint = shopping.fingerprint;
-      await tester.tap(find.text('Rumah'));
+      await tester.tap(find.text('Lokasimu saat ini'));
       await tester.pumpAndSettle();
       expect(find.text('Gunakan alamat & jadwal'), findsOneWidget);
       await tester.tap(find.byTooltip('Tutup pilihan pengiriman'));
@@ -407,7 +561,7 @@ void main() {
       };
       shopping.notifyListeners();
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Rumah'));
+      await tester.tap(find.text('Lokasimu saat ini'));
       await tester.pumpAndSettle();
       expect(find.byType(DeliveryPage), findsNothing);
       await tester.pumpWidget(const SizedBox());

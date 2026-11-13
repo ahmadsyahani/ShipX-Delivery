@@ -5,6 +5,7 @@ import 'account/account_page.dart';
 import 'core/auth_api.dart';
 import 'core/auth_session.dart';
 import 'catalog_page.dart';
+import 'home_page.dart';
 import 'delivery/delivery_page.dart';
 import 'commerce/shopping_state.dart';
 import 'commerce/cart_page.dart';
@@ -366,6 +367,16 @@ class _RoleHomeState extends State<RoleHome> {
   }
 
   int _tab = 0;
+  bool _catalogOpen = false;
+  String _catalogCollection = 'all';
+  void _openCatalog([String collection = 'all']) {
+    setState(() {
+      _catalogCollection = collection;
+      _catalogOpen = true;
+      _tab = 0;
+    });
+  }
+
   bool _busy = false;
   String? _error;
   Future<void> _run(Future<void> Function() action) async {
@@ -417,165 +428,228 @@ class _RoleHomeState extends State<RoleHome> {
     );
 
     final cartBadgeCount = _shopping?.count ?? 0;
+    final catalogVisible = user.role == 'customer' && _tab == 0 && _catalogOpen;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          user.role == 'customer'
-              ? ['ShipX', 'Pengiriman', 'Checkout', 'Akun'][_tab]
-              : user.role == 'courier'
-              ? ['Trip pengiriman', 'Akun'][_tab]
-              : title,
-          style: TextStyle(
-            fontSize: user.role == 'customer' && _tab == 0 ? 25 : 19,
-            fontWeight: FontWeight.w800,
-            letterSpacing: -0.8,
-            color: _tab == 0 && user.role == 'customer'
-                ? AppColors.primaryDark
-                : AppColors.textMain,
-          ),
-        ),
-        centerTitle: user.role == 'customer' && _tab != 0,
-        toolbarHeight: 58,
-        actions: [
-          if (user.role == 'customer')
-            IconButton(
-              icon: Badge(
-                isLabelVisible: cartBadgeCount > 0,
-                label: Text('$cartBadgeCount'),
-                backgroundColor: AppColors.primary,
-                child: const Icon(Icons.shopping_bag_outlined),
+    return PopScope(
+      canPop: !(user.role == 'customer' && _tab == 0 && _catalogOpen),
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) setState(() => _catalogOpen = false);
+      },
+      child: Scaffold(
+        appBar: user.role == 'customer' && _tab == 3
+            ? null
+            : AppBar(
+                backgroundColor: catalogVisible ? AppColors.primaryDark : null,
+                foregroundColor: catalogVisible ? Colors.white : null,
+                surfaceTintColor: catalogVisible ? Colors.transparent : null,
+                leading: user.role == 'customer' && _tab == 0 && _catalogOpen
+                    ? BackButton(
+                        onPressed: () => setState(() => _catalogOpen = false),
+                      )
+                    : null,
+                title: Text(
+                  user.role == 'customer'
+                      ? [
+                          _catalogOpen ? 'Katalog' : 'ShipX',
+                          'Pengiriman',
+                          'Checkout',
+                          'Pesanan',
+                          'Akun',
+                        ][_tab]
+                      : user.role == 'courier'
+                      ? ['Trip pengiriman', 'Akun'][_tab]
+                      : title,
+                  style: TextStyle(
+                    fontSize:
+                        user.role == 'customer' && _tab == 0 && !_catalogOpen
+                        ? 25
+                        : 18,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.8,
+                    color: catalogVisible
+                        ? Colors.white
+                        : _tab == 0 && user.role == 'customer'
+                        ? AppColors.primaryDark
+                        : AppColors.textMain,
+                  ),
+                ),
+                centerTitle:
+                    user.role == 'customer' && (_tab != 0 || catalogVisible),
+                toolbarHeight: 58,
+                actions: [
+                  if (user.role == 'customer')
+                    IconButton(
+                      icon: Badge(
+                        isLabelVisible: cartBadgeCount > 0,
+                        label: Text('$cartBadgeCount'),
+                        backgroundColor: AppColors.primary,
+                        child: const Icon(Icons.shopping_bag_outlined),
+                      ),
+                      tooltip: 'Keranjang',
+                      onPressed: () => setState(() => _tab = 2),
+                    ),
+                  const SizedBox(width: 8),
+                ],
               ),
-              tooltip: 'Keranjang',
-              onPressed: () => setState(() => _tab = 2),
-            ),
-          const SizedBox(width: 8),
-        ],
-      ),
-      bottomNavigationBar: Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          border: Border(top: BorderSide(color: AppColors.border, width: 1)),
-        ),
-        child: user.role == 'customer'
-            ? NavigationBar(
-                selectedIndex: _tab,
-                onDestinationSelected: (value) => setState(() => _tab = value),
-                backgroundColor: Colors.white,
-                elevation: 0,
-                indicatorColor: Colors.transparent,
-                height: 68,
-                destinations: [
-                  const NavigationDestination(
-                    icon: Icon(Icons.storefront_outlined),
-                    selectedIcon: Icon(
-                      Icons.storefront,
-                      color: AppColors.primary,
-                    ),
-                    label: 'Katalog',
-                  ),
-                  const NavigationDestination(
-                    icon: Icon(Icons.local_shipping_outlined),
-                    selectedIcon: Icon(
-                      Icons.local_shipping,
-                      color: AppColors.primary,
-                    ),
-                    label: 'Pengiriman',
-                  ),
-                  NavigationDestination(
-                    icon: Badge(
-                      isLabelVisible: cartBadgeCount > 0,
-                      label: Text('$cartBadgeCount'),
-                      backgroundColor: AppColors.primary,
-                      child: const Icon(Icons.shopping_bag_outlined),
-                    ),
-                    selectedIcon: Badge(
-                      isLabelVisible: cartBadgeCount > 0,
-                      label: Text('$cartBadgeCount'),
-                      backgroundColor: AppColors.primary,
-                      child: const Icon(
-                        Icons.shopping_bag,
+        bottomNavigationBar: Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            border: Border(top: BorderSide(color: AppColors.border, width: 1)),
+          ),
+          child: user.role == 'customer'
+              ? NavigationBar(
+                  selectedIndex: _tab,
+                  onDestinationSelected: (value) => setState(() {
+                    _tab = value;
+                    if (value == 0) _catalogOpen = false;
+                  }),
+                  backgroundColor: Colors.white,
+                  elevation: 0,
+                  indicatorColor: Colors.transparent,
+                  height: 68,
+                  destinations: [
+                    const NavigationDestination(
+                      icon: Icon(Icons.home_outlined),
+                      selectedIcon: Icon(
+                        Icons.home_rounded,
                         color: AppColors.primary,
                       ),
+                      label: 'Home',
                     ),
-                    label: 'Keranjang',
-                  ),
-                  const NavigationDestination(
-                    icon: Icon(Icons.person_outline),
-                    selectedIcon: Icon(Icons.person, color: AppColors.primary),
-                    label: 'Akun',
-                  ),
-                ],
-              )
-            : user.role == 'courier'
-            ? NavigationBar(
-                selectedIndex: _tab,
-                onDestinationSelected: (value) => setState(() => _tab = value),
-                backgroundColor: Colors.white,
-                elevation: 0,
-                indicatorColor: AppColors.primaryLight,
-                destinations: const [
-                  NavigationDestination(
-                    icon: Icon(Icons.route_outlined),
-                    selectedIcon: Icon(Icons.route, color: AppColors.primary),
-                    label: 'Trip',
-                  ),
-                  NavigationDestination(
-                    icon: Icon(Icons.person_outline),
-                    selectedIcon: Icon(Icons.person, color: AppColors.primary),
-                    label: 'Akun',
-                  ),
-                ],
-              )
-            : null,
-      ),
-      body: SafeArea(
-        top: false,
-        bottom: false,
-        child: Align(
-          alignment: Alignment.topCenter,
-          child: SizedBox(
-            width: 760,
-            child: user.role == 'customer'
-                ? IndexedStack(
-                    index: _tab,
-                    children: [
-                      CatalogPage(
-                        session: widget.session,
-                        shopping: _shopping,
-                        openCart: () => setState(() => _tab = 2),
-                        chooseDelivery: _deliverySheet,
-                        keyboardVisible:
-                            MediaQuery.viewInsetsOf(context).bottom > 0,
+                    const NavigationDestination(
+                      icon: Icon(Icons.local_shipping_outlined),
+                      selectedIcon: Icon(
+                        Icons.local_shipping,
+                        color: AppColors.primary,
                       ),
-                      _tab != 1
-                          ? const SizedBox.shrink()
-                          : DeliveryPage(
-                              session: widget.session,
-                              shopping: _shopping,
-                              openCart: () => setState(() => _tab = 2),
-                            ),
-                      CartPage(
-                        session: widget.session,
-                        shopping: _shopping!,
-                        chooseDelivery: _deliverySheet,
-                        browse: () => setState(() => _tab = 0),
+                      label: 'Pengiriman',
+                    ),
+                    NavigationDestination(
+                      icon: Badge(
+                        isLabelVisible: cartBadgeCount > 0,
+                        label: Text('$cartBadgeCount'),
+                        backgroundColor: AppColors.primary,
+                        child: const Icon(Icons.shopping_bag_outlined),
                       ),
-                      account,
-                    ],
-                  )
-                : user.role == 'courier'
-                ? IndexedStack(
-                    index: _tab,
-                    children: [
-                      CourierTripsPage(
-                        session: widget.session,
-                        active: _tab == 0,
+                      selectedIcon: Badge(
+                        isLabelVisible: cartBadgeCount > 0,
+                        label: Text('$cartBadgeCount'),
+                        backgroundColor: AppColors.primary,
+                        child: const Icon(
+                          Icons.shopping_bag,
+                          color: AppColors.primary,
+                        ),
                       ),
-                      account,
-                    ],
-                  )
-                : account,
+                      label: 'Keranjang',
+                    ),
+                    const NavigationDestination(
+                      icon: Icon(Icons.receipt_long_outlined),
+                      selectedIcon: Icon(
+                        Icons.receipt_long,
+                        color: AppColors.primary,
+                      ),
+                      label: 'Pesanan',
+                    ),
+                    const NavigationDestination(
+                      icon: Icon(Icons.person_outline),
+                      selectedIcon: Icon(
+                        Icons.person,
+                        color: AppColors.primary,
+                      ),
+                      label: 'Akun',
+                    ),
+                  ],
+                )
+              : user.role == 'courier'
+              ? NavigationBar(
+                  selectedIndex: _tab,
+                  onDestinationSelected: (value) =>
+                      setState(() => _tab = value),
+                  backgroundColor: Colors.white,
+                  elevation: 0,
+                  indicatorColor: AppColors.primaryLight,
+                  destinations: const [
+                    NavigationDestination(
+                      icon: Icon(Icons.route_outlined),
+                      selectedIcon: Icon(Icons.route, color: AppColors.primary),
+                      label: 'Trip',
+                    ),
+                    NavigationDestination(
+                      icon: Icon(Icons.person_outline),
+                      selectedIcon: Icon(
+                        Icons.person,
+                        color: AppColors.primary,
+                      ),
+                      label: 'Akun',
+                    ),
+                  ],
+                )
+              : null,
+        ),
+        body: SafeArea(
+          top: false,
+          bottom: false,
+          child: Align(
+            alignment: Alignment.topCenter,
+            child: SizedBox(
+              width: 760,
+              child: user.role == 'customer'
+                  ? IndexedStack(
+                      index: _tab,
+                      children: [
+                        _catalogOpen
+                            ? CatalogPage(
+                                key: ValueKey(_catalogCollection),
+                                initialCollection: _catalogCollection,
+                                session: widget.session,
+                                shopping: _shopping,
+                                openCart: () => setState(() => _tab = 2),
+                                chooseDelivery: _deliverySheet,
+                                keyboardVisible:
+                                    MediaQuery.viewInsetsOf(context).bottom > 0,
+                              )
+                            : HomePage(
+                                user: user,
+                                openCatalog: _openCatalog,
+                                openOrders: () => setState(() => _tab = 3),
+                                chooseDelivery: _deliverySheet,
+                              ),
+                        _tab != 1
+                            ? const SizedBox.shrink()
+                            : DeliveryPage(
+                                session: widget.session,
+                                shopping: _shopping,
+                                openCart: () => setState(() => _tab = 2),
+                              ),
+                        CartPage(
+                          session: widget.session,
+                          shopping: _shopping!,
+                          chooseDelivery: _deliverySheet,
+                          browse: _openCatalog,
+                        ),
+                        _tab == 3
+                            ? OrdersPage(
+                                session: widget.session,
+                                shopping: _shopping!,
+                                embedded: true,
+                              )
+                            : const SizedBox.shrink(),
+                        account,
+                      ],
+                    )
+                  : user.role == 'courier'
+                  ? IndexedStack(
+                      index: _tab,
+                      children: [
+                        CourierTripsPage(
+                          session: widget.session,
+                          active: _tab == 0,
+                        ),
+                        account,
+                      ],
+                    )
+                  : account,
+            ),
           ),
         ),
       ),

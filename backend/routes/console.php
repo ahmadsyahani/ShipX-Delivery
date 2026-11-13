@@ -45,3 +45,21 @@ Artisan::command('shipx:cleanup-delivery-proofs', function () {
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
+
+Schedule::command('shipx:sync-holidays')->dailyAt('00:05')->withoutOverlapping();
+Schedule::command('shipx:prepare-delivery-schedule')->dailyAt('00:15')->withoutOverlapping();
+
+Artisan::command('shipx:sync-holidays', function () {
+    foreach ([now()->year, now()->year + 1] as $year) {
+        try {
+            $count = app(\App\Services\NationalHolidayCalendar::class)->sync($year);
+            $this->info("Kalender $year diperbarui ($count hari).");
+        } catch (\Throwable $error) {
+            $this->error("Kalender $year memakai salinan tersimpan. ".$error->getMessage());
+        }
+    }
+});
+Artisan::command('shipx:prepare-delivery-schedule', function () {
+    $count = app(\App\Services\DeliveryScheduleGenerator::class)->generate();
+    $this->info("$count slot pengiriman disiapkan.");
+});

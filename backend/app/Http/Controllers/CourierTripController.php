@@ -37,6 +37,21 @@ class CourierTripController extends Controller
         return response()->json(['data' => $this->data($trip, true)]);
     }
 
+    public function navigation(Request $request, string $id, \App\Services\LocalNavigation $navigation)
+    {
+        $origin = $request->validate([
+            'latitude' => ['required', 'numeric', 'between:-90,90'],
+            'longitude' => ['required', 'numeric', 'between:-180,180'],
+        ]);
+        $trip = Trip::where('courier_id', $request->user()->id)->whereIn('status', ['assigned', 'in_progress', 'awaiting_reconciliation'])->with('selectedRoute')->findOrFail($id);
+
+        try {
+            return response()->json(['data' => $navigation->route($this->data($trip, true), $origin)]);
+        } catch (BusinessFailure $error) {
+            return response()->json($error->body(), $error->status);
+        }
+    }
+
     private function data(Trip $trip, bool $detail = false): array
     {
         $snapshot = $trip->selectedRoute->input_snapshot;

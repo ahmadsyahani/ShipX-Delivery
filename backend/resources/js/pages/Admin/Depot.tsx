@@ -35,6 +35,10 @@ export default function Depot({
         delivery_fee_rp: String(depot.delivery_fee_rp ?? ""),
         pending_ttl_minutes: String(depot.pending_ttl_minutes),
         default_service_seconds: String(depot.default_service_seconds),
+        delivery_per_km_rp: String(depot.delivery_per_km_rp ?? 1000),
+        express_extra_percent: String(depot.express_extra_percent ?? 50),
+        delivery_prep_minutes: String(depot.delivery_prep_minutes ?? 30),
+        delivery_speed_kmh: String(depot.delivery_speed_kmh ?? 20),
         lock_version: depot.lock_version,
     });
     return (
@@ -209,8 +213,32 @@ export default function Depot({
                                 {(
                                     [
                                         [
+                                            "delivery_per_km_rp",
+                                            "Tambahan setiap km berikutnya (Rp)",
+                                            0,
+                                            1000000,
+                                        ],
+                                        [
+                                            "express_extra_percent",
+                                            "Tambahan Express (%)",
+                                            0,
+                                            500,
+                                        ],
+                                        [
+                                            "delivery_prep_minutes",
+                                            "Persiapan pengiriman (menit)",
+                                            1,
+                                            240,
+                                        ],
+                                        [
+                                            "delivery_speed_kmh",
+                                            "Kecepatan estimasi (km/jam)",
+                                            1,
+                                            100,
+                                        ],
+                                        [
                                             "delivery_fee_rp",
-                                            "Ongkir tetap per order (Rp)",
+                                            "Ongkir dasar, termasuk 1 km pertama (Rp)",
                                             0,
                                             1000000000,
                                         ],

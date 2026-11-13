@@ -1,5 +1,7 @@
 # ERD — ShipX
 
+Checkpoint 13 November 2026 menambah product_favorites dengan primary key gabungan user_id/product_id, foreign key ke users/products serta timestamps. Favorit bersifat per customer. Frekuensi pemesanan dihitung dari orders/order_items milik customer yang mengakses. Migration000012 telah diterapkan.
+
 Checkpoint 8 November 2026: migration 000010 sudah Ran, menambah trip_reconciliations (trip UNIQUE, expected/actual cash, signed difference, reason, approved_by/at, inventory_transaction_id UNIQUE) dan reconciliation_items (FK receipt/product, state, expected/actual quantity, signed difference, reason, UNIQUE receipt/product/state). Rekonsiliasi final mengosongkan akun trip, mengkredit barang aktual ke depot sesuai kondisi, mencatat ledger/audit dan completed/actual_return_at serta melepas claims atomik. Collection/order final tidak diubah. Detail ada di RECONCILIATION_CHECKPOINT.md; status belum tersedia di bawah merupakan histori.
 
 Versi 0.2 · mengacu PRD_ShipX.md. Menggantikan model khusus galon. Users (phone, role, is_active) dan personal_access_tokens Sanctum sudah dimigrasi pada MySQL lokal 4 November 2026; tabel domain lain masih rancangan. Phone nullable untuk kompatibilitas user lama, wajib pada register baru. Seluruh implementasi baru mengikuti dokumen aktif ini, bukan docs/history.

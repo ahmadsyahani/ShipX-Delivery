@@ -1,5 +1,7 @@
 # PRD — ShipX
 
+Checkpoint 14 November 2026 menambah navigasi demo lokal OpenStreetMap/Valhalla. Pratinjau assigned dimulai dari depot, perjalanan aktif menggunakan GPS foreground dengan instruksi belokan dan perhitungan ulang rute. Graph mencakup area sekitar depot Surabaya. Pencatatan hasil, foto, COD serta rekonsiliasi tetap melalui alur operasional kurir/admin. Rincian serta cara menjalankan tersedia di LOCAL_NAVIGATION_DEMO.md.
+
 Checkpoint aktif 8 November 2026: barang kembali layak jual/karantina per SKU, setoran COD, alasan/persetujuan selisih dan penutupan trip sudah diimplementasikan. Receipt/ledger/audit/status completed/pelepasan claims atomik; Flutter menampilkan penyerahan dan receipt milik sendiri. Lihat RECONCILIATION_CHECKPOINT.md. Pernyataan rekonsiliasi belum tersedia di checkpoint lama di bawah adalah histori. Navigasi/optimasi provider dan pilot menjadi tahap berikutnya.
 
 Versi 0.2 · 4 November 2026 · menggantikan lingkup khusus galon v0.1.
@@ -78,7 +80,7 @@ Kedua total gabungan order trip wajib <= snapshot kapasitas kendaraan. Volume ad
 
 MVP delivery-only: muatan awal tertinggi; keberhasilan mengurangi berat/volume dan kegagalan mempertahankan muatan. Tidak ada asumsi total wadah tetap atau perhitungan kapasitas hanya berdasarkan jumlah barang.
 
-Data waktu/jarak memakai matriks jalan dengan mode kendaraan yang sesuai. Baseline urutan pesanan masuk dibanding nearest neighbor + 2-opt dari input sama. Periksa jendela mulai layanan, waktu tunggu, durasi layanan dan perjalanan pulang. Matriks asimetris dihitung sesuai arah tiap ruas. Pilih solusi layak terbaik dari kandidat dan baseline; heuristik tidak menjamin optimum global.
+Keputusan13November2026, optimasi satu trip/satu slot memakai deadline-ordered cheapest feasible insertion +2-opt. Matriks waktu jalan manual lengkap beserta sumber ditinjau admin. Baseline urutan draft, FIFO dan kandidat dibanding dari input sama. Semua batas kapasitas serta selesai layanan dalam window dan jam operasional wajib terpenuhi. Skor mengutamakan total waktu selesai Express sejak keberangkatan, lalu total waktu jalan termasuk pulang dan waktu kembali. Express memakai deadline akhir slot pesanan. Prioritas Express dapat menambah total waktu jalan, sehingga admin melihat kedua metrik sebelum menerapkan. Matriks asimetris dihitung sesuai arah tiap ruas. Kandidat heuristik belum menjamin optimum global. Integrasi provider matriks tetap menjadi tahap berikutnya.
 
 Jika data jalan tidak lengkap atau tidak ditemukan rute layak, admin menerima konflik dan memecah gelombang/mengubah rencana. Jangan menggantinya diam-diam dengan jarak garis lurus. ETA hanya estimasi. Kebijakan penyimpanan data dan biaya provider diperiksa sebelum integrasi.
 

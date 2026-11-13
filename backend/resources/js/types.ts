@@ -63,6 +63,10 @@ export type Depot = {
     timezone: string;
     service_radius_m: number | null;
     delivery_fee_rp: number | null;
+    delivery_per_km_rp: number;
+    express_extra_percent: number;
+    delivery_prep_minutes: number;
+    delivery_speed_kmh: number;
     pending_ttl_minutes: number;
     default_service_seconds: number;
     lock_version: number;
@@ -88,6 +92,8 @@ export type OrderItem = {
     handling_notes_snapshot: string | null;
 };
 export type Order = {
+    delivery_type: "regular" | "express";
+    delivery_distance_m: number | null;
     id: number;
     order_number: string;
     recipient_name: string;

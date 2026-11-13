@@ -21,19 +21,19 @@ class AdminDeliverySlotController extends Controller
             $query->whereDate('service_date', $date);
         }
 
-        return Inertia::render('Admin/Slots/Index', ['filters' => ['date' => $filters['date'] ?? ''], 'serverNow' => now()->toISOString(), 'slots' => $query->orderByDesc('service_date')->orderBy('window_start_at')->orderBy('id')->paginate(20)->withQueryString(), 'depot' => Depot::findOrFail(1)]);
+        return Inertia::render('Admin/Slots/Index', ['filters' => ['date' => $filters['date'] ?? ''], 'serverNow' => now()->toISOString(), 'slots' => $query->orderByDesc('service_date')->orderBy('window_start_at')->orderBy('id')->paginate(20)->withQueryString(), 'depot' => Depot::findOrFail(1), 'nationalHolidays' => array_merge(app(\App\Services\NationalHolidayCalendar::class)->dates((int) now()->year), app(\App\Services\NationalHolidayCalendar::class)->dates((int) now()->year + 1))]);
     }
 
     public function create()
     {
-        return Inertia::render('Admin/Slots/Form', ['slot' => null, 'depot' => Depot::findOrFail(1)]);
+        return Inertia::render('Admin/Slots/Form', ['slot' => null, 'depot' => Depot::findOrFail(1), 'nationalHolidays' => array_merge(app(\App\Services\NationalHolidayCalendar::class)->dates((int) now()->year), app(\App\Services\NationalHolidayCalendar::class)->dates((int) now()->year + 1))]);
     }
 
     public function edit(DeliverySlot $slot)
     {
         abort_unless((int) $slot->depot_id === 1, 404);
 
-        return Inertia::render('Admin/Slots/Form', ['slot' => $slot, 'depot' => Depot::findOrFail(1)]);
+        return Inertia::render('Admin/Slots/Form', ['slot' => $slot, 'depot' => Depot::findOrFail(1), 'nationalHolidays' => array_merge(app(\App\Services\NationalHolidayCalendar::class)->dates((int) now()->year), app(\App\Services\NationalHolidayCalendar::class)->dates((int) now()->year + 1))]);
     }
 
     public function store(Request $request)
@@ -70,6 +70,12 @@ class AdminDeliverySlotController extends Controller
             }
             if ($data['is_active'] && ($cutoff <= now() || $start > now()->addDays(365))) {
                 throw ValidationException::withMessages(['cutoff_local' => 'Slot aktif harus belum cutoff dan maksimal 365 hari ke depan.']);
+            }
+            if ($data['is_active']) {
+                [$opens, $closes] = app(\App\Services\DeliveryPolicy::class)->bounds($depot, $data['service_date']);
+                if ($start->utc() < $opens || $end->utc() > $closes) {
+                    throw ValidationException::withMessages(['start_time' => 'Jadwal harus di dalam jam layanan. Senin–Jumat 08.00–17.00, akhir pekan/libur nasional 09.00–16.00.']);
+                }
             }
             $record->depot_id = 1;
             $record->fill(['service_date' => $data['service_date'], 'window_start_at' => $start->utc(), 'window_end_at' => $end->utc(), 'cutoff_at' => $cutoff->utc(), 'is_active' => $data['is_active']]);

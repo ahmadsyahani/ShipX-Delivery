@@ -29,6 +29,10 @@ class DepotController extends Controller
             'delivery_fee_rp' => ['required', 'integer', 'min:0', 'max:1000000000'],
             'pending_ttl_minutes' => ['required', 'integer', 'min:1', 'max:1440'],
             'default_service_seconds' => ['required', 'integer', 'min:1', 'max:7200'],
+            'delivery_per_km_rp' => ['sometimes', 'integer', 'min:0', 'max:1000000'],
+            'express_extra_percent' => ['sometimes', 'integer', 'min:0', 'max:500'],
+            'delivery_prep_minutes' => ['sometimes', 'integer', 'min:1', 'max:240'],
+            'delivery_speed_kmh' => ['sometimes', 'integer', 'min:1', 'max:100'],
             'lock_version' => ['required', 'integer', 'min:0'],
         ]);
 

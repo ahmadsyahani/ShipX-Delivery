@@ -5,6 +5,7 @@ import '../core/auth_session.dart';
 import '../catalog_page.dart' show rupiah;
 import '../delivery/delivery_page.dart' show slotDate, slotTime;
 import 'shopping_state.dart';
+import 'shop_widgets.dart' show CodTotal;
 import 'order_refresh.dart';
 import '../courier/delivery_result_view.dart';
 
@@ -21,8 +22,14 @@ String orderStatus(String value) => switch (value) {
 };
 
 class OrdersPage extends StatefulWidget {
-  const OrdersPage({super.key, required this.session, required this.shopping});
+  const OrdersPage({
+    super.key,
+    required this.session,
+    required this.shopping,
+    this.embedded = false,
+  });
   final AuthSession session;
+  final bool embedded;
   final ShoppingState shopping;
   @override
   State<OrdersPage> createState() => _OrdersPageState();
@@ -89,10 +96,26 @@ class _OrdersPageState extends State<OrdersPage> with OrderRefresh<OrdersPage> {
     }
   }
 
+  Future<void> _openOrder(Map<String, dynamic> order) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => OrderDetailPage(
+          session: widget.session,
+          shopping: widget.shopping,
+          id: order['id'],
+        ),
+      ),
+    );
+    if (mounted) _load();
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
-      title: const Text('Pesanan saya'),
+      automaticallyImplyLeading: !widget.embedded,
+      centerTitle: true,
+      title: const Text('Riwayat pesanan'),
       actions: [
         IconButton(
           tooltip: 'Perbarui status',
@@ -107,11 +130,6 @@ class _OrdersPageState extends State<OrdersPage> with OrderRefresh<OrdersPage> {
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
         children: [
-          const AppPageIntro(
-            title: 'Setiap pesanan, jelas.',
-            description:
-                'Pantau proses pengiriman dan lihat riwayat belanjamu.',
-          ),
           if (_busy)
             const Padding(
               padding: EdgeInsets.all(32),
@@ -158,30 +176,59 @@ class _OrdersPageState extends State<OrdersPage> with OrderRefresh<OrdersPage> {
             ),
           for (final order in _orders)
             Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Material(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
+              padding: const EdgeInsets.only(bottom: 16),
+              child: Card(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                  side: const BorderSide(color: AppColors.border),
+                ),
                 child: InkWell(
                   borderRadius: BorderRadius.circular(20),
-                  onTap: () async {
-                    await Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => OrderDetailPage(
-                          session: widget.session,
-                          shopping: widget.shopping,
-                          id: order['id'],
-                        ),
-                      ),
-                    );
-                    if (mounted) _load();
-                  },
+                  onTap: () => _openOrder(order),
                   child: Padding(
                     padding: const EdgeInsets.all(18),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
+                        Row(
+                          children: [
+                            const CircleAvatar(
+                              backgroundColor: AppColors.primaryLight,
+                              child: Icon(
+                                Icons.local_shipping_outlined,
+                                color: AppColors.primary,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'Pengiriman',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                  Text(
+                                    order['created_at'] == null
+                                        ? 'ShipX'
+                                        : slotDate(
+                                            order['created_at'],
+                                            order['timezone'],
+                                          ),
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      color: AppColors.textMuted,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
                         Align(
                           alignment: Alignment.centerLeft,
                           child: StatusBadge(
@@ -189,12 +236,50 @@ class _OrdersPageState extends State<OrdersPage> with OrderRefresh<OrdersPage> {
                             text: orderStatus(order['status']),
                           ),
                         ),
-                        const SizedBox(height: 16),
+                        const Divider(height: 28),
+                        for (final item
+                            in ((order['items'] as List?) ?? []).take(2))
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 48,
+                                  height: 48,
+                                  decoration: BoxDecoration(
+                                    color: AppColors.primaryLight,
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: const Icon(
+                                    Icons.inventory_2_outlined,
+                                    color: AppColors.primary,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    item['name'],
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                                Text('${item['quantity']}×'),
+                              ],
+                            ),
+                          ),
+                        const Divider(height: 26),
+                        Text(
+                          order['address']?['address_text'] ??
+                              'Pengiriman ShipX',
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                        const SizedBox(height: 8),
                         Text(
                           order['order_number'],
                           style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
+                            fontSize: 12,
+                            color: AppColors.textMuted,
                             height: 1.6,
                           ),
                         ),
@@ -202,42 +287,19 @@ class _OrdersPageState extends State<OrdersPage> with OrderRefresh<OrdersPage> {
                         Row(
                           children: [
                             Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text(
-                                    'Total pesanan',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: AppColors.textMuted,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    rupiah(order['total_rp']),
-                                    style: const TextStyle(
-                                      fontSize: 19,
-                                      fontWeight: FontWeight.w800,
-                                      color: AppColors.primaryDark,
-                                    ),
-                                  ),
-                                ],
+                              child: Text(
+                                rupiah(order['total_rp']),
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w800,
+                                ),
                               ),
                             ),
-                            const Icon(
-                              Icons.arrow_forward_rounded,
-                              size: 20,
-                              color: AppColors.primary,
+                            OutlinedButton(
+                              onPressed: () => _openOrder(order),
+                              child: const Text('Lihat detail'),
                             ),
                           ],
-                        ),
-                        const SizedBox(height: 6),
-                        const Text(
-                          'COD tunai',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: AppColors.textMuted,
-                          ),
                         ),
                       ],
                     ),
@@ -374,6 +436,7 @@ class _OrderDetailPageState extends State<OrderDetailPage>
     listenable: widget.shopping,
     builder: (context, _) => Scaffold(
       appBar: AppBar(
+        centerTitle: true,
         title: const Text('Detail pesanan'),
         actions: [
           IconButton(
@@ -403,15 +466,42 @@ class _OrderDetailPageState extends State<OrderDetailPage>
                     ),
                   ],
                   if (_order != null) ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 22,
+                        vertical: 28,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.primaryLight,
+                        borderRadius: BorderRadius.circular(22),
+                      ),
+                      child: Column(
+                        children: [
+                          Icon(
+                            _order!['status'] == 'delivered'
+                                ? Icons.check_circle_outline
+                                : Icons.local_shipping_outlined,
+                            size: 48,
+                            color: AppColors.primary,
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            orderStatus(_order!['status']),
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.primary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 20),
                     AppPanel(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          StatusBadge(
-                            status: _order!['status'],
-                            text: orderStatus(_order!['status']),
-                          ),
-                          const SizedBox(height: 16),
                           Text(
                             _order!['order_number'],
                             style: const TextStyle(
@@ -488,8 +578,10 @@ class _OrderDetailPageState extends State<OrderDetailPage>
                             style: const TextStyle(fontSize: 13, height: 1.6),
                           ),
                           const Divider(height: 28),
-                          const AppSectionTitle(
-                            title: 'Jadwal pengiriman',
+                          AppSectionTitle(
+                            title: _order!['delivery_type'] == 'express'
+                                ? 'Pengiriman Express'
+                                : 'Jadwal pengiriman',
                             icon: Icons.schedule_rounded,
                           ),
                           Text(
@@ -514,13 +606,47 @@ class _OrderDetailPageState extends State<OrderDetailPage>
                           ),
                           for (final item in _order!['items'])
                             Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 6),
-                              child: Text(
-                                '${item['quantity']} item ${item['name']} - ${rupiah(item['line_total_rp'])}',
-                                style: const TextStyle(
-                                  fontSize: 13,
-                                  height: 1.6,
-                                ),
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Container(
+                                    width: 48,
+                                    height: 48,
+                                    decoration: BoxDecoration(
+                                      color: AppColors.primaryLight,
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: const Icon(
+                                      Icons.inventory_2_outlined,
+                                      color: AppColors.primary,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          '${item['quantity']} item ${item['name']}',
+                                          style: const TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w700,
+                                            height: 1.6,
+                                          ),
+                                        ),
+                                        Text(
+                                          rupiah(item['line_total_rp']),
+                                          style: const TextStyle(
+                                            fontSize: 13,
+                                            height: 1.6,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           const Divider(height: 24),
@@ -538,13 +664,10 @@ class _OrderDetailPageState extends State<OrderDetailPage>
                             ),
                           ),
                           const SizedBox(height: 5),
-                          Text(
-                            'Total COD ${rupiah(_order!['total_rp'])}',
-                            style: const TextStyle(
-                              fontSize: 23,
-                              fontWeight: FontWeight.w800,
-                              color: AppColors.primaryDark,
-                            ),
+                          CodTotal(
+                            key: const ValueKey('order-cod-total'),
+                            amountKey: const ValueKey('order-cod-amount'),
+                            amount: rupiah(_order!['total_rp']),
                           ),
                           if (_order!['status'] == 'pending')
                             Padding(

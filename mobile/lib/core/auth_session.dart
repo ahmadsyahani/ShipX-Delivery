@@ -46,12 +46,20 @@ class AuthSession extends ChangeNotifier {
   Future<Map<String, dynamic>> catalog({
     String query = '',
     String? category,
+    String collection = 'all',
+    bool grouped = false,
     int page = 1,
   }) async {
     try {
       final path = Uri(
         path: '/catalog',
-        queryParameters: {'q': query, 'page': '$page', 'category': ?category},
+        queryParameters: {
+          'q': query,
+          'page': '$page',
+          'category': ?category,
+          if (collection != 'all') 'collection': collection,
+          if (grouped) 'grouped': '1',
+        },
       ).toString();
       return await api.request('GET', path, token: _token, envelope: true);
     } on ApiException catch (error) {

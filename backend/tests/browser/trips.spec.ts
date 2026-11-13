@@ -19,11 +19,13 @@ test('manual trip: order sequence, assignment, courier privacy, reopen and cance
   const initial=JSON.parse(props!).props;
   const candidates=initial.orders.filter((o:{address_text:string})=>o.address_text==='Alamat QA khusus trip');
   expect(candidates).toHaveLength(2);
+  const group=initial.deliveryGroups.find((g:{delivery_slot_id:number})=>g.delivery_slot_id===candidates[0].delivery_slot_id);
+  await page.getByLabel('Jadwal pengantaran',{exact:true}).selectOption(group.key);
   const departure=new Date(new Date(candidates[0].window_start_at).getTime()-3600000);
   const parts=Object.fromEntries(new Intl.DateTimeFormat('en-GB',{timeZone:initial.timezone,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}).formatToParts(departure).map(p=>[p.type,p.value]));
   await page.getByLabel('Kurir',{exact:true}).selectOption({label:'QA Kurir'});
   await page.getByLabel('Kendaraan',{exact:true}).selectOption({label:'QA-TRIP · B2026QA'});
-  await page.locator('#departure_local').fill(`${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`);
+  await page.locator('#departure_local').fill(`${parts.hour}:${parts.minute}`);
   for(const o of candidates) await page.getByRole('checkbox',{name:new RegExp(o.order_number)}).check();
   await expect(page.getByRole('status')).toContainText('Beban terpakai: 40%');
   await page.getByRole('button',{name:'Turunkan tujuan 1'}).click();

@@ -6,9 +6,16 @@ class LocationFailure implements Exception {
   final String message;
 }
 
-/// A single foreground fix, requested only after a user taps the location button.
+/// Foreground location, requested only after an explicit location/navigation action.
 class DeviceLocation {
   const DeviceLocation();
+
+  Stream<Position> watch() => Geolocator.getPositionStream(
+    locationSettings: const LocationSettings(
+      accuracy: LocationAccuracy.high,
+      distanceFilter: 5,
+    ),
+  );
 
   Future<LatLng> locate() async {
     if (!await Geolocator.isLocationServiceEnabled()) {

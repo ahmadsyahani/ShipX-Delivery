@@ -201,4 +201,57 @@ class DeliveryTest extends TestCase
         $this->get('/admin/depot')->assertForbidden();
         $this->post('/admin/slots', $this->slot())->assertForbidden();
     }
+    public function test_operating_hours_follow_weekends_national_holidays_and_slot_boundaries(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-11-04T01:00:00Z'));
+        $depot = $this->configure();
+        $policy = app(\App\Services\DeliveryPolicy::class);
+        $this->assertSame('08:00', $policy->hours($depot, '2026-11-06')['opens_at']);
+        $this->assertSame('09:00', $policy->hours($depot, '2026-11-07')['opens_at']);
+        $this->assertSame('16:00', $policy->hours($depot, '2026-11-08')['closes_at']);
+        $this->assertTrue($policy->hours($depot, '2026-12-25')['is_national_holiday']);
+        $this->assertFalse($policy->hours($depot, '2026-12-24')['is_national_holiday']);
+        $this->actingAs(User::factory()->create(['role' => 'admin']), 'web');
+        $this->post('/admin/slots', $this->slot(['service_date' => '2026-11-07', 'start_time' => '08:00', 'cutoff_local' => '2026-11-07T07:00']))->assertSessionHasErrors('start_time');
+        $this->post('/admin/slots', $this->slot(['service_date' => '2026-12-25', 'start_time' => '09:00', 'end_time' => '16:00', 'cutoff_local' => '2026-12-25T08:00']))->assertRedirect();
+        $this->post('/admin/slots', $this->slot(['service_date' => '2026-12-25', 'start_time' => '15:00', 'end_time' => '17:00', 'cutoff_local' => '2026-12-25T14:00']))->assertSessionHasErrors('start_time');
+    }
+
+    public function test_schedule_generation_is_repeatable_and_preserves_manual_slots(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-11-06T00:00:00Z'));
+        $depot = $this->configure();
+        $generator = app(\App\Services\DeliveryScheduleGenerator::class);
+        $this->assertSame(23, $generator->generate(3));
+        $this->assertSame(0, $generator->generate(3));
+        foreach (DeliverySlot::all() as $slot) {
+            $this->assertTrue(app(\App\Services\DeliveryPolicy::class)->allows($depot, $slot));
+        }
+        $slot = DeliverySlot::first();
+        $slot->is_active = false;
+        $slot->save();
+        $this->assertSame(0, $generator->generate(3));
+        $this->assertFalse($slot->fresh()->is_active);
+    }
+
+    public function test_calendar_sync_uses_official_dates_and_keeps_cache_on_invalid_response(): void
+    {
+        $calendar = app(\App\Services\NationalHolidayCalendar::class);
+        $html = '<p>Daftar hari libur</p>';
+        for ($day = 1; $day <= 17; $day++) {
+            $html .= "<p>$day Januari: Hari libur</p>";
+        }
+        $html .= '<p>Cuti Bersama</p><p>18 Januari: Cuti</p>';
+        \Illuminate\Support\Facades\Http::fake(['*' => \Illuminate\Support\Facades\Http::response($html)]);
+        $this->assertSame(17, $calendar->sync(2026));
+        $this->assertNotContains('2026-01-18', $calendar->dates(2026));
+        \Illuminate\Support\Facades\Http::fake(['*' => \Illuminate\Support\Facades\Http::response('<p>Maintenance</p>')]);
+        try {
+            $calendar->sync(2026);
+            $this->fail('An incomplete calendar must fail.');
+        } catch (\RuntimeException $error) {
+            $this->assertSame(17, count($calendar->dates(2026)));
+        }
+    }
+
 }

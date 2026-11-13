@@ -20,9 +20,9 @@ class ManualTripService
 {
     // The depot mutex is also used by checkout, cancellation and stock decisions.
     // No road API, dispatch, reservation consumption or inventory movement here.
-    public function save(int $actor, array $plan, ?int $id = null): array
+    public function save(int $actor, array $plan, ?int $id = null, ?array $optimization = null): array
     {
-        return DB::transaction(function () use ($actor, $plan, $id) {
+        return DB::transaction(function () use ($actor, $plan, $id, $optimization) {
             $depot = Depot::lockForUpdate()->findOrFail(1);
             $snapshot = $this->validatePlan($depot, $plan);
             $trip = $id ? Trip::where('depot_id', 1)->lockForUpdate()->findOrFail($id) : new Trip;
@@ -45,11 +45,25 @@ class ManualTripService
                 $trip->lock_version++;
             }
             $trip->save();
+            if ($optimization !== null) {
+                $snapshot['optimization'] = $optimization;
+            }
             $this->appendRoute($trip, $actor, $snapshot);
             $this->event($trip, $actor, $id ? 'updated' : 'created');
 
             return $this->response($trip->refresh());
         });
+    }
+
+    public function prepareOptimization(int $id, int $version): array
+    {
+        $depot = Depot::lockForUpdate()->findOrFail(1);
+        $trip = Trip::where('depot_id', 1)->findOrFail($id);
+        $snapshot = $this->validatePlan($depot, $trip->selectedRoute->input_snapshot['plan']);
+        $trip = Trip::lockForUpdate()->findOrFail($id);
+        $this->guard($trip, $version, ['draft']);
+
+        return [$trip, $snapshot];
     }
 
     private function validatePlan(Depot $depot, array $plan): array
@@ -101,10 +115,17 @@ class ManualTripService
             $this->fail('CAPACITY_EXCEEDED', 'Total berat atau volume melebihi kapasitas kendaraan.');
         }
 
+        $date = $orders->first()->window_start_at->setTimezone($depot->timezone)->toDateString();
+        [$opens, $closes] = app(DeliveryPolicy::class)->bounds($depot, $date);
+        if ($departure < $opens || $departure >= $closes) {
+            $this->fail('INVALID_DEPARTURE', 'Keberangkatan harus di dalam jam layanan tanggal tersebut.');
+        }
+
         return [
+            'operating_hours' => ['opens_at' => $opens->toISOString(), 'closes_at' => $closes->toISOString()],
             'plan' => array_diff_key($plan, array_flip(['idempotency_key', 'lock_version'])),
             'departure_at' => $departure->toISOString(),
-            'depot' => $depot->only(['id', 'name', 'address_text', 'latitude', 'longitude', 'timezone', 'default_service_seconds', 'lock_version']),
+            'depot' => $depot->only(['id', 'name', 'address_text', 'latitude', 'longitude', 'timezone', 'default_service_seconds', 'delivery_prep_minutes', 'lock_version']),
             'courier' => $courier->only(['id', 'name', 'lock_version']),
             'vehicle' => $vehicle->only(['id', 'code', 'name', 'plate_number', 'travel_mode', 'max_load_weight_g', 'max_load_volume_cm3', 'lock_version']),
             'orders' => array_map(fn ($id) => (new OrderResource($orders[$id]))->resolve(), $ids),

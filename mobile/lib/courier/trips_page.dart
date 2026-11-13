@@ -9,6 +9,8 @@ import '../delivery/delivery_page.dart' show slotDate, slotTime;
 import 'trip_start_panel.dart';
 import 'delivery_result_panel.dart';
 import 'reconciliation_view.dart';
+import 'trip_overview.dart';
+import '../commerce/shop_widgets.dart' show CodTotal;
 
 class CourierTripsPage extends StatefulWidget {
   const CourierTripsPage({
@@ -295,6 +297,8 @@ class _CourierTripsPageState extends State<CourierTripsPage>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        TripOverview(trip: t, session: widget.session),
+        const SizedBox(height: 14),
         _summary(t, detail: true),
         if (t['reconciliation'] != null) ...[
           const SizedBox(height: 14),
@@ -494,29 +498,7 @@ class _CourierTripsPageState extends State<CourierTripsPage>
                         color: AppColors.primaryLight,
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      child: Wrap(
-                        alignment: WrapAlignment.spaceBetween,
-                        spacing: 10,
-                        runSpacing: 6,
-                        children: [
-                          const Text(
-                            'Bayar di tempat',
-                            style: TextStyle(
-                              color: AppColors.primaryDark,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          Text(
-                            'Tagihan COD: ${rupiah(s['total_rp'])}',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w800,
-                              fontSize: 14,
-                              color: AppColors.primaryDark,
-                            ),
-                          ),
-                        ],
-                      ),
+                      child: CodTotal(amount: rupiah(s['total_rp'])),
                     ),
                     if (s['id'] != null)
                       DeliveryResultPanel(
@@ -553,7 +535,9 @@ class _CourierTripsPageState extends State<CourierTripsPage>
             children: [
               Expanded(
                 child: AppPageIntro(
-                  title: widget.id == null ? 'Trip saya' : 'Rencana penugasan',
+                  title: widget.id == null
+                      ? 'Siap mengantar?'
+                      : 'Detail perjalanan',
                   description: widget.id == null
                       ? 'Siapkan perjalanan dan lihat penugasanmu.'
                       : 'Periksa muatan, tujuan, dan jadwal perjalanan.',
@@ -614,7 +598,7 @@ class _CourierTripsPageState extends State<CourierTripsPage>
                         Icon(
                           Icons.route_outlined,
                           size: 48,
-                          color: Color(0xFF087E8B),
+                          color: AppColors.primary,
                         ),
                         SizedBox(height: 16),
                         Text(

@@ -20,6 +20,16 @@ class TripScheduleService
                 throw new BusinessFailure('ROAD_DATA_INVALID', 'Waktu perjalanan setiap ruas harus berupa detik 0–86400.');
             }
         }
+        $hours = $snapshot['operating_hours'] ?? null;
+        if ($hours === null && count($orders) > 0 && isset($snapshot['depot']['timezone'])) {
+            $depot = new \App\Models\Depot(['timezone' => $snapshot['depot']['timezone']]);
+            $date = CarbonImmutable::parse($orders[0]['window_start_at'])->setTimezone($depot->timezone)->toDateString();
+            [$opens, $closes] = app(DeliveryPolicy::class)->bounds($depot, $date);
+            $hours = ['opens_at' => $opens->toISOString(), 'closes_at' => $closes->toISOString()];
+        }
+        if ($hours !== null && ($departure < CarbonImmutable::parse($hours['opens_at']) || $departure >= CarbonImmutable::parse($hours['closes_at']))) {
+            throw new BusinessFailure('SCHEDULE_INFEASIBLE', 'Keberangkatan di luar jam layanan.');
+        }
         $cursor = $departure;
         $stops = [];
         foreach ($orders as $i => $order) {
@@ -27,10 +37,14 @@ class TripScheduleService
             $opening = CarbonImmutable::parse($order['window_start_at'])->utc();
             $closing = CarbonImmutable::parse($order['window_end_at'])->utc();
             $service = $arrival->max($opening);
-            if ($service > $closing) {
-                throw new BusinessFailure('SCHEDULE_INFEASIBLE', 'Tujuan '.($i + 1).' melewati akhir jendela mulai layanan. Tinjau urutan, waktu jalan, atau gelombang.');
+            if ($hours !== null) {
+                $closing = $closing->min(CarbonImmutable::parse($hours['closes_at']));
             }
-            $cursor = $service->addSeconds($snapshot['depot']['default_service_seconds']);
+            $completion = $service->addSeconds($snapshot['depot']['default_service_seconds']);
+            if ($completion > $closing) {
+                throw new BusinessFailure('SCHEDULE_INFEASIBLE', 'Tujuan '.($i + 1).' melewati akhir jendela pengiriman atau jam tutup. Tinjau urutan, waktu jalan, atau gelombang.');
+            }
+            $cursor = $completion;
             $stops[] = ['order_id' => (string) $order['id'], 'sequence_no' => $i + 1, 'estimated_arrival_at' => $arrival->toISOString(), 'estimated_service_start_at' => $service->toISOString(), 'estimated_service_end_at' => $cursor->toISOString(), 'waiting_seconds' => $service->getTimestamp() - $arrival->getTimestamp()];
         }
 

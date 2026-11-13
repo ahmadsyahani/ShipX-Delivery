@@ -46,7 +46,9 @@ class DeliveryPage extends StatefulWidget {
 }
 
 class _DeliveryPageState extends State<DeliveryPage> {
-  Map<String, dynamic>? _depot;
+  Map<String, dynamic>? _depot, _operatingHours;
+  List<Map<String, dynamic>> _deliveryOptions = [];
+  String _deliveryType = 'regular';
   final List<Map<String, dynamic>> _addresses = [], _slots = [];
   String? _selectedAddress, _selectedSlot, _date, _error, _slotError;
   bool _busy = true, _slotBusy = false, _addressMore = false, _slotMore = false;
@@ -69,6 +71,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
     if (_locked) return;
     setState(() => _selectedAddress = value['id']);
     widget.shopping?.chooseAddress(value);
+    if (_date != null) _loadSlots();
   }
 
   void _chooseSlot(Map<String, dynamic> value) {
@@ -77,13 +80,19 @@ class _DeliveryPageState extends State<DeliveryPage> {
     widget.shopping?.chooseSlot(
       _selectedSlot == null
           ? null
-          : {...value, 'timezone': _depot!['timezone']},
+          : {
+              ...value,
+              'timezone': _depot!['timezone'],
+              'delivery_type': _deliveryType,
+            },
     );
   }
 
   @override
   void initState() {
     super.initState();
+    _deliveryType =
+        widget.shopping?.slot?['delivery_type'] as String? ?? 'regular';
     _selectedAddress = widget.shopping?.address?['id'];
     _selectedSlot = widget.shopping?.slot?['id'];
     _date = widget.shopping?.slot?['service_date'];
@@ -171,7 +180,10 @@ class _DeliveryPageState extends State<DeliveryPage> {
       if (_depot!['configured'] == true) {
         await _loadSlots();
         if (!mounted || sequence != _loadSequence) return;
-        if (previousSlot != null && _selectedAddress != null && !_locked) {
+        if (_deliveryType == 'regular' &&
+            previousSlot != null &&
+            _selectedAddress != null &&
+            !_locked) {
           final matches = _slots.where(
             (slot) => slot['id'] == previousSlot['id'] && _open(slot),
           );
@@ -239,16 +251,25 @@ class _DeliveryPageState extends State<DeliveryPage> {
     try {
       final r = await widget.session.deliveryRequest(
         'GET',
-        '/delivery-slots?date=$_date&page=${next ? _slotPage + 1 : 1}&per_page=20',
+        '/delivery-slots?date=$_date&page=${next ? _slotPage + 1 : 1}&per_page=20&delivery_type=$_deliveryType${_selectedAddress == null ? '' : '&address_id=$_selectedAddress'}',
         envelope: true,
       );
       if (!mounted || generation != _generation) return;
       setState(() {
         _clock(r['server_time']);
         _slots.addAll((r['data'] as List).cast<Map<String, dynamic>>());
+        _operatingHours = r['operating_hours'] as Map<String, dynamic>?;
+        _deliveryOptions = (r['delivery_options'] as List? ?? [])
+            .cast<Map<String, dynamic>>();
         _slotPage = r['meta']['current_page'];
         _slotLast = r['meta']['last_page'];
       });
+      if (!next &&
+          _deliveryType == 'express' &&
+          _slots.isNotEmpty &&
+          !_locked) {
+        _chooseSlot(_slots.first);
+      }
     } catch (_) {
       if (mounted && generation == _generation) {
         setState(() => _slotError = 'Slot belum dapat dimuat. Coba lagi.');
@@ -452,6 +473,99 @@ class _DeliveryPageState extends State<DeliveryPage> {
               ],
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _deliveryTypeTile(String type) {
+    final matches = _deliveryOptions.where(
+      (option) => option['delivery_type'] == type,
+    );
+    final option = matches.isEmpty ? null : matches.first;
+    final express = type == 'express';
+    final selected = _deliveryType == type;
+    final enabled = !_locked && !_slotBusy && (!express || option != null);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Material(
+        color: selected ? AppColors.primaryLighter : Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(
+            color: selected ? AppColors.primary : AppColors.border,
+          ),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: !enabled
+              ? null
+              : () {
+                  if (_locked || _slotBusy || _deliveryType == type) return;
+                  setState(() => _deliveryType = type);
+                  _loadSlots();
+                },
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Row(
+              children: [
+                Icon(
+                  selected
+                      ? Icons.radio_button_checked
+                      : Icons.radio_button_off,
+                  color: enabled ? AppColors.primary : AppColors.textMuted,
+                  size: 20,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        express ? 'Express' : 'Reguler',
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        express
+                            ? 'Jadwal terdekat, dipilih otomatis'
+                            : 'Pilih jadwal pengantaran',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: AppColors.textMuted,
+                        ),
+                      ),
+                      if (option != null)
+                        Text(
+                          rupiah(option['delivery_fee_rp']),
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: AppColors.primary,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      if (express && option != null)
+                        Text(
+                          'Persiapan minimum ${option['preparation_minutes']} menit · jarak perkiraan',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: AppColors.textMuted,
+                          ),
+                        ),
+                      if (express && option == null)
+                        const Text(
+                          'Pilih alamat untuk melihat ongkir',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: AppColors.textMuted,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -776,6 +890,24 @@ class _DeliveryPageState extends State<DeliveryPage> {
                   ),
                 ),
                 const SizedBox(height: 12),
+                Text(
+                  _operatingHours == null
+                      ? 'Senin–Jumat 08.00–17.00 • Akhir pekan/libur nasional 09.00–16.00'
+                      : 'Jam layanan ${_operatingHours!['opens_at']}–${_operatingHours!['closes_at']}${_operatingHours!['is_national_holiday'] == true ? ' • Libur nasional' : ''}',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: AppColors.textMuted,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                const Text(
+                  'Tipe pengiriman',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 8),
+                for (final type in ['regular', 'express'])
+                  _deliveryTypeTile(type),
+                const SizedBox(height: 12),
                 if (_slotBusy)
                   const Padding(
                     padding: EdgeInsets.all(24),
@@ -824,12 +956,15 @@ class _DeliveryPageState extends State<DeliveryPage> {
                       ],
                     ),
                   ),
-                for (final slot in _slots.where(_open))
+                for (final slot
+                    in _slots
+                        .where(_open)
+                        .take(_deliveryType == 'express' ? 1 : _slots.length))
                   Padding(
                     padding: const EdgeInsets.only(bottom: 10),
                     child: _slotTile(slot),
                   ),
-                if (_slotPage < _slotLast)
+                if (_deliveryType != 'express' && _slotPage < _slotLast)
                   TextButton(
                     onPressed: _slotMore ? null : () => _loadSlots(next: true),
                     child: Text(
@@ -862,7 +997,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              'Ongkir per pesanan ${rupiah(_depot!['delivery_fee_rp'])}',
+                              'Ongkir dihitung dari jarak ke alamat pengiriman.',
                               style: const TextStyle(
                                 fontSize: 12,
                                 color: AppColors.textMuted,

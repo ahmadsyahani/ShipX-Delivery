@@ -92,6 +92,18 @@ class DeliverySummary extends StatelessWidget {
                 ),
               ),
             ],
+            if (slot?['delivery_type'] != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  slot!['delivery_type'] == 'express' ? 'Express' : 'Reguler',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: AppColors.primary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
             if (slot != null) ...[
               SizedBox(height: compact ? 6 : 16),
               if (!compact)
@@ -147,12 +159,13 @@ class ShopDock extends StatelessWidget {
     this.icon,
     this.busy = false,
     this.tinted = false,
+    this.compact = false,
   });
   final String caption, amount, action;
   final VoidCallback? onPressed;
   final Key? buttonKey;
   final IconData? icon;
-  final bool busy, tinted;
+  final bool busy, tinted, compact;
 
   @override
   Widget build(BuildContext context) => Material(
@@ -161,12 +174,13 @@ class ShopDock extends StatelessWidget {
       decoration: const BoxDecoration(
         border: Border(top: BorderSide(color: AppColors.borderLight)),
       ),
-      padding: const EdgeInsets.fromLTRB(20, 13, 20, 15),
+      padding: EdgeInsets.fromLTRB(20, compact ? 8 : 13, 20, compact ? 8 : 15),
       child: LayoutBuilder(
         builder: (context, box) {
+          final textScale = MediaQuery.textScalerOf(context).scale(1);
           final stacked =
-              box.maxWidth < 310 ||
-              MediaQuery.textScalerOf(context).scale(1) > 1.25;
+              box.maxWidth < (compact ? 240 : 350) * textScale ||
+              textScale > 1.25;
           final price = Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -180,8 +194,8 @@ class ShopDock extends StatelessWidget {
               const SizedBox(height: 3),
               Text(
                 amount,
-                style: const TextStyle(
-                  fontSize: 20,
+                style: TextStyle(
+                  fontSize: compact ? 18 : 20,
                   fontWeight: FontWeight.w800,
                   letterSpacing: -0.7,
                 ),
@@ -192,13 +206,23 @@ class ShopDock extends StatelessWidget {
             key: buttonKey,
             style: FilledButton.styleFrom(
               shape: const StadiumBorder(),
-              padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
+              minimumSize: compact ? const Size(48, 40) : null,
+              textStyle: compact
+                  ? const TextStyle(
+                      fontFamily: 'PlusJakartaSans',
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    )
+                  : null,
+              padding: EdgeInsets.symmetric(
+                horizontal: compact ? 16 : 22,
+                vertical: compact ? 8 : 14,
+              ),
             ),
             onPressed: busy ? null : onPressed,
-            child: Wrap(
-              spacing: 7,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              alignment: WrapAlignment.center,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 if (busy)
                   const SizedBox.square(
@@ -207,7 +231,8 @@ class ShopDock extends StatelessWidget {
                   )
                 else if (icon != null)
                   Icon(icon, size: 18),
-                Text(action, textAlign: TextAlign.center),
+                if (busy || icon != null) const SizedBox(width: 7),
+                Flexible(child: Text(action, textAlign: TextAlign.center)),
               ],
             ),
           );
@@ -220,7 +245,7 @@ class ShopDock extends StatelessWidget {
                   children: [
                     Expanded(child: price),
                     const SizedBox(width: 16),
-                    Flexible(child: button),
+                    if (compact) button else Expanded(child: button),
                   ],
                 );
         },
@@ -250,6 +275,53 @@ class ShopHeading extends StatelessWidget {
         ),
         ?action,
       ],
+    ),
+  );
+}
+
+class CodTotal extends StatelessWidget {
+  const CodTotal({super.key, required this.amount, this.amountKey});
+  final String amount;
+  final Key? amountKey;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(12),
+    decoration: BoxDecoration(
+      color: AppColors.primaryLight,
+      borderRadius: BorderRadius.circular(12),
+    ),
+    child: LayoutBuilder(
+      builder: (context, box) {
+        const label = Text(
+          'Total COD',
+          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+        );
+        final value = Text(
+          amount,
+          key: amountKey,
+          textAlign: TextAlign.right,
+          style: const TextStyle(
+            fontSize: 19,
+            color: AppColors.primaryDark,
+            fontWeight: FontWeight.w800,
+          ),
+        );
+        if (box.maxWidth < 240 ||
+            MediaQuery.textScalerOf(context).scale(1) > 1.25) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [label, const SizedBox(height: 6), value],
+          );
+        }
+        return Row(
+          children: [
+            label,
+            const SizedBox(width: 12),
+            Expanded(child: value),
+          ],
+        );
+      },
     ),
   );
 }

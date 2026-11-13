@@ -68,6 +68,14 @@ class TripDepartureReviewService
             }
         }
 
+        if (isset($snapshot['operating_hours']) && count($snapshot['orders']) > 0) {
+            $date = CarbonImmutable::parse($snapshot['orders'][0]['window_start_at'])->setTimezone($depot->timezone)->toDateString();
+            [$opens, $closes] = app(DeliveryPolicy::class)->bounds($depot, $date);
+            if ($snapshot['operating_hours'] !== ['opens_at' => $opens->toISOString(), 'closes_at' => $closes->toISOString()]) {
+                throw new BusinessFailure('PLAN_CHANGED', 'Kalender jam layanan berubah. Buka ulang dan tinjau rencana trip.');
+            }
+        }
+
         return $versions;
     }
 }

@@ -4,6 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shipx/core/auth_api.dart';
 import 'package:shipx/core/auth_session.dart';
 import 'package:shipx/delivery/address_form.dart';
+import 'package:shipx/commerce/shopping_state.dart';
+import 'shopping_test.dart' show MemoryPending;
 import 'package:shipx/delivery/delivery_page.dart';
 
 Map<String, dynamic> depot({bool configured = true}) => {
@@ -75,7 +77,85 @@ class DeliverySession extends AuthSession {
   }
 }
 
+class DeliveryOptionsSession extends DeliverySession {
+  final requests = <String>[];
+  @override
+  Future<Map<String, dynamic>> deliveryRequest(
+    String method,
+    String path, {
+    Map<String, String>? body,
+    bool envelope = false,
+  }) async {
+    requests.add(path);
+    if (!path.startsWith('/delivery-slots')) {
+      return super.deliveryRequest(
+        method,
+        path,
+        body: body,
+        envelope: envelope,
+      );
+    }
+    final express = path.contains('delivery_type=express');
+    return {
+      ...list([
+        {...slot(), 'id': express ? '2' : '1'},
+      ]),
+      'operating_hours': {
+        'opens_at': '08:00',
+        'closes_at': '17:00',
+        'is_national_holiday': false,
+      },
+      'delivery_options': [
+        {'delivery_type': 'regular', 'delivery_fee_rp': 3000},
+        {
+          'delivery_type': 'express',
+          'delivery_fee_rp': 4500,
+          'preparation_minutes': 31,
+        },
+      ],
+    };
+  }
+}
+
 void main() {
+  testWidgets(
+    'Express chooses earliest eligible slot and reaches checkout payload',
+    (tester) async {
+      final session = DeliveryOptionsSession();
+      final shopping = ShoppingState(session: session, store: MemoryPending())
+        ..ready = true;
+      shopping.chooseAddress(address());
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: DeliveryPage(session: session, shopping: shopping),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final scroll = find.byType(Scrollable).first;
+      await tester.scrollUntilVisible(
+        find.text('Express'),
+        180,
+        scrollable: scroll,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Express'));
+      await tester.pumpAndSettle();
+      expect(session.requests.last, contains('delivery_type=express'));
+      expect(session.requests.last, contains('address_id=1'));
+      expect(shopping.payload()['delivery_type'], 'express');
+      expect(shopping.payload()['delivery_slot_id'], '2');
+      expect(find.text('Rp4.500'), findsOneWidget);
+      await tester.ensureVisible(find.text('Reguler'));
+      await tester.tap(find.text('Reguler'));
+      await tester.pumpAndSettle();
+      expect(shopping.slot, isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+      shopping.dispose();
+    },
+  );
+
   test('slot time and date use depot zone instead of phone zone', () {
     expect(slotTime('2026-11-04T16:30:00Z', 'Asia/Jayapura'), '01:30');
     expect(slotDate('2026-11-04T16:30:00Z', 'Asia/Jayapura'), '05/11/2026');
@@ -133,6 +213,13 @@ void main() {
         'Belum ada alamat. Tambahkan penerima dan pin lokasi terlebih dahulu.',
       ),
       findsOneWidget,
+    );
+    await tester.scrollUntilVisible(
+      find.text(
+        'Belum ada slot terbuka untuk tanggal ini. Pilih tanggal lain atau muat ulang.',
+      ),
+      180,
+      scrollable: find.byType(Scrollable).first,
     );
     expect(
       find.text(

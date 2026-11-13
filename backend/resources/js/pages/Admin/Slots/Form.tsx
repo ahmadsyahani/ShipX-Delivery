@@ -15,9 +15,11 @@ import type { Depot, Slot } from "@/types";
 export default function SlotForm({
     slot,
     depot,
+    nationalHolidays = [],
 }: {
     slot: Slot | null;
     depot: Depot;
+    nationalHolidays?: string[];
 }) {
     const start = localInput(slot?.window_start_at, depot.timezone);
     const form = useForm({
@@ -28,6 +30,29 @@ export default function SlotForm({
         is_active: slot?.is_active ?? true,
         lock_version: slot?.lock_version ?? 0,
     });
+    function hours(date: string) {
+        const day = new Date(`${date}T12:00:00Z`).getUTCDay();
+        const shortDay =
+            day === 0 || day === 6 || nationalHolidays.includes(date);
+        return {
+            start: shortDay ? "09:00" : "08:00",
+            end: shortDay ? "16:00" : "17:00",
+        };
+    }
+    function schedule(date: string) {
+        const opening = hours(date).start;
+        const cutoff = new Date(
+            new Date(`${date}T${opening}:00Z`).getTime() -
+                depot.delivery_prep_minutes * 60000,
+        );
+        return {
+            service_date: date,
+            start_time: opening,
+            end_time: `${String(Number(opening.slice(0, 2)) + 1).padStart(2, "0")}:00`,
+            cutoff_local: cutoff.toISOString().slice(0, 16),
+        };
+    }
+    const operating = hours(form.data.service_date);
     return (
         <>
             <Head title={slot ? "Edit slot" : "Tambah slot"} />
@@ -84,9 +109,36 @@ export default function SlotForm({
                                         id={key}
                                         type={type}
                                         required
+                                        min={
+                                            key === "start_time" ||
+                                            key === "end_time"
+                                                ? operating.start
+                                                : undefined
+                                        }
+                                        max={
+                                            key === "start_time" ||
+                                            key === "end_time"
+                                                ? operating.end
+                                                : undefined
+                                        }
                                         value={form.data[key]}
                                         onChange={(e) =>
-                                            form.setData(key, e.target.value)
+                                            key === "service_date" && !slot
+                                                ? form.setData((data) => ({
+                                                      ...data,
+                                                      ...(e.target.value
+                                                          ? schedule(
+                                                                e.target.value,
+                                                            )
+                                                          : {
+                                                                service_date:
+                                                                    "",
+                                                            }),
+                                                  }))
+                                                : form.setData(
+                                                      key,
+                                                      e.target.value,
+                                                  )
                                         }
                                         aria-invalid={!!form.errors[key]}
                                     />
@@ -94,10 +146,12 @@ export default function SlotForm({
                             ))}
                         </div>
                         <p className="mt-5 rounded-lg bg-muted/60 p-3 text-xs leading-6 text-muted-foreground">
-                            Waktu selesai harus setelah mulai pada tanggal yang
-                            sama. Batas pemesanan paling lambat saat mulai. Slot
-                            aktif harus belum ditutup dan maksimal 365 hari ke
-                            depan.
+                            Jam layanan {operating.start}–{operating.end}.
+                            Senin–Jumat 08.00–17.00, akhir pekan dan libur
+                            nasional 09.00–16.00. Waktu selesai harus setelah
+                            mulai pada tanggal yang sama. Batas pemesanan paling
+                            lambat saat mulai. Slot aktif harus belum ditutup
+                            dan maksimal 365 hari ke depan.
                         </p>
                     </Section>
                     <Section title="Ketersediaan slot">

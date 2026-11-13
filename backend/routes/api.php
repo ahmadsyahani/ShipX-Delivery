@@ -15,6 +15,7 @@ Route::prefix('v1')->group(function (): void {
     Route::middleware(['auth:sanctum', 'active.role'])->group(function (): void {
         Route::get('/catalog', CatalogController::class)->middleware('active.role:customer');
         Route::middleware('active.role:customer')->group(function (): void {
+            Route::put('/catalog/{product}/favorite', \App\Http\Controllers\ProductFavoriteController::class)->whereNumber('product');
             Route::post('/order-quotes', [OrderController::class, 'quote']);
             Route::post('/orders', [OrderController::class, 'store'])->name('api.orders.store');
             Route::get('/orders', [OrderController::class, 'index']);
@@ -29,6 +30,7 @@ Route::prefix('v1')->group(function (): void {
         Route::middleware('active.role:courier')->prefix('courier')->group(function (): void {
             Route::get('trips', [\App\Http\Controllers\CourierTripController::class, 'index']);
             Route::get('trips/{id}', [\App\Http\Controllers\CourierTripController::class, 'show'])->whereNumber('id');
+            Route::post('trips/{id}/navigation', [\App\Http\Controllers\CourierTripController::class, 'navigation'])->whereNumber('id')->middleware('throttle:30,1');
             Route::post('trips/{id}/start', [\App\Http\Controllers\CourierTripController::class, 'start'])->whereNumber('id');
             Route::post('trips/{id}/stops/{stop}/proofs', [\App\Http\Controllers\DeliveryProofController::class, 'store'])->whereNumber(['id', 'stop']);
             Route::post('trips/{id}/stops/{stop}/result', [\App\Http\Controllers\DeliveryResultController::class, 'store'])->whereNumber(['id', 'stop']);

@@ -18,6 +18,8 @@ class ProductResource extends JsonResource
             'width_mm' => $this->width_mm, 'height_mm' => $this->height_mm,
             'handling_notes' => $this->handling_notes,
             'photo_url' => $this->photo_url,
+            'is_favorite' => (bool) $this->is_favorite,
+            'customer_order_count' => (int) $this->customer_order_count,
         ];
     }
 }

@@ -82,7 +82,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Hitung total'));
     await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(find.textContaining('Total COD'), 200);
+    await tester.scrollUntilVisible(find.text('Pesan sekarang'), 200);
     await tester.pumpAndSettle();
     return state;
   }
@@ -93,7 +93,10 @@ void main() {
       final session = CartSession();
       final state = await showCart(tester, session);
       expect(session.requests, isEmpty);
-      expect(find.text('Total COD Rp18.000'), findsOneWidget);
+      expect(
+        tester.widget<Text>(find.byKey(const ValueKey('cart-cod-amount'))).data,
+        'Rp18.000',
+      );
       await tester.tap(find.text('Pesan sekarang'));
       await tester.pumpAndSettle();
       expect(session.requests, isEmpty);
@@ -139,19 +142,33 @@ void main() {
     expect(session.requests, isEmpty);
   });
   testWidgets(
-    'server price replaces catalog estimate while checkout dock stays visible',
+    'server price and checkout action appear inside the payment summary',
     (tester) async {
       final session = CartSession()..unitPrice = 17000;
       final state = await showCart(tester, session);
-      expect(find.text('Total COD Rp20.000'), findsOneWidget);
-      expect(find.text('Pesan sekarang').hitTestable(), findsOneWidget);
-      await tester.drag(
-        find.byKey(const ValueKey('cart-content')),
-        const Offset(0, 700),
+      expect(
+        tester.widget<Text>(find.byKey(const ValueKey('cart-cod-amount'))).data,
+        'Rp20.000',
       );
-      await tester.pumpAndSettle();
       expect(find.text('Pesan sekarang').hitTestable(), findsOneWidget);
-      expect(find.text('Rp17.000'), findsOneWidget);
+      final panel = find.byKey(const ValueKey('cart-payment-summary'));
+      expect(
+        find.descendant(
+          of: panel,
+          matching: find.byKey(const ValueKey('checkout-action')),
+        ),
+        findsOneWidget,
+      );
+      final amount = find.byKey(const ValueKey('cart-cod-amount'));
+      expect(tester.widget<Text>(amount).textAlign, TextAlign.right);
+      expect(
+        tester.getRect(amount).right,
+        closeTo(
+          tester.getRect(find.byKey(const ValueKey('cart-cod-total'))).right -
+              12,
+          .1,
+        ),
+      );
       expect(session.requests, isEmpty);
       await tester.pumpWidget(const SizedBox());
       state.dispose();

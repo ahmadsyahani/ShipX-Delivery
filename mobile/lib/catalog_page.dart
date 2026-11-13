@@ -3,6 +3,7 @@ import 'core/app_theme.dart';
 import 'core/auth_session.dart';
 import 'commerce/shopping_state.dart';
 import 'catalog/product_art.dart';
+import 'catalog/catalog_location_header.dart';
 import 'commerce/shop_widgets.dart';
 
 String rupiah(int amount) =>
@@ -16,8 +17,10 @@ class CatalogPage extends StatefulWidget {
     this.openCart,
     this.chooseDelivery,
     this.keyboardVisible = false,
+    this.initialCollection = 'all',
   });
   final AuthSession session;
+  final String initialCollection;
   final ShoppingState? shopping;
   final VoidCallback? openCart, chooseDelivery;
   final bool keyboardVisible;
@@ -27,12 +30,23 @@ class CatalogPage extends StatefulWidget {
 
 class _CatalogPageState extends State<CatalogPage> {
   final _search = TextEditingController();
+  bool _searchOpen = false;
+  String? _storeName;
   final _productScroll = ScrollController();
   final _categoryScroll = ScrollController();
+  final _viewportKey = GlobalKey();
+  final _sectionKeys = <String, GlobalKey>{};
+  final _pillKeys = <String, GlobalKey>{};
+  int _jumpGeneration = 0;
+  bool _jumping = false;
+  bool _trackingScheduled = false;
+
   final List<Map<String, dynamic>> _products = [];
   List<String> _categories = [];
   String? _category;
-  String _query = '', _depot = 'Depot utama';
+  String _collection = 'all';
+  final Set<String> _savingFavorites = {};
+  String _query = '';
   String? _error;
   bool _loading = true, _more = false;
   bool _retryNext = false;
@@ -40,6 +54,8 @@ class _CatalogPageState extends State<CatalogPage> {
   @override
   void initState() {
     super.initState();
+    _collection = widget.initialCollection;
+    _productScroll.addListener(_queueCategoryTracking);
     _load();
   }
 
@@ -67,7 +83,8 @@ class _CatalogPageState extends State<CatalogPage> {
     try {
       final result = await widget.session.catalog(
         query: _query,
-        category: _category,
+        grouped: _collection != 'frequent',
+        collection: _collection,
         page: next ? _page + 1 : 1,
       );
       if (!mounted || generation != _generation) return;
@@ -78,20 +95,19 @@ class _CatalogPageState extends State<CatalogPage> {
               ..._categories,
               ...products.map((p) => p['category'] as String),
             }.toList();
-      if (result['categories'] is List &&
-          _category != null &&
-          !categories.contains(_category)) {
-        _category = null;
-        await _load();
-        return;
-      }
       setState(() {
         _categories = categories;
-        if (!next) _products.clear();
+        _storeName = (result['depot'] as Map?)?['name'] as String?;
+        if (!next) {
+          _products.clear();
+          _category = null;
+        }
         _products.addAll(products);
         _page = result['meta']['current_page'] as int;
         _lastPage = result['meta']['last_page'] as int;
-        _depot = result['depot']['name'] as String;
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _trackCategory();
       });
     } catch (_) {
       if (mounted && generation == _generation) {
@@ -291,19 +307,169 @@ class _CatalogPageState extends State<CatalogPage> {
   }
 
   void _searchProducts(String value) {
+    _jumpGeneration++;
+    _jumping = false;
     _query = value.trim();
     _category = null;
     if (_productScroll.hasClients) _productScroll.jumpTo(0);
     _load();
   }
 
-  void _selectCategory(String? value) {
-    if (_category == value) return;
-    _category = value;
+  Future<void> _selectCategory(String? value) async {
+    if (_collection == 'frequent') {
+      await _selectCollection('all');
+      if (!mounted || _collection != 'all') return;
+    }
+    final jump = ++_jumpGeneration;
+    _jumping = true;
+    setState(() => _category = value);
+    try {
+      while (value != null &&
+          !_products.any((product) => product['category'] == value) &&
+          _page < _lastPage) {
+        final previousPage = _page;
+        await _load(next: true);
+        if (!mounted || jump != _jumpGeneration) return;
+        if (_page == previousPage) break;
+      }
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted || jump != _jumpGeneration || !_productScroll.hasClients) {
+        return;
+      }
+      final section = value == null
+          ? null
+          : _sectionKeys[value]?.currentContext?.findRenderObject()
+                as RenderBox?;
+      final viewport =
+          _viewportKey.currentContext?.findRenderObject() as RenderBox?;
+      final offset = section == null || viewport == null
+          ? 0.0
+          : _productScroll.offset +
+                section.localToGlobal(Offset.zero).dy -
+                viewport.localToGlobal(Offset.zero).dy;
+      await _productScroll.animateTo(
+        offset.clamp(0.0, _productScroll.position.maxScrollExtent),
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
+      if (!mounted || jump != _jumpGeneration) return;
+      _revealPill(value);
+    } finally {
+      if (mounted && jump == _jumpGeneration) {
+        _jumping = false;
+        _trackCategory();
+      }
+    }
+  }
+
+  void _revealPill(String? category) {
+    final context = _pillKeys[category ?? 'all']?.currentContext;
+    if (context != null) {
+      Scrollable.ensureVisible(
+        context,
+        alignment: .5,
+        duration: const Duration(milliseconds: 180),
+      );
+    }
+  }
+
+  void _queueCategoryTracking() {
+    if (_trackingScheduled) return;
+    _trackingScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _trackingScheduled = false;
+      if (mounted) _trackCategory();
+    });
+  }
+
+  void _trackCategory() {
+    if (!_productScroll.hasClients || _loading || _jumping) return;
+    if (_collection == 'frequent') {
+      if (_productScroll.position.extentAfter < 180 &&
+          _page < _lastPage &&
+          !_more &&
+          _error == null) {
+        _load(next: true);
+      }
+      return;
+    }
+    final viewport =
+        _viewportKey.currentContext?.findRenderObject() as RenderBox?;
+    if (viewport == null) return;
+    final top = viewport.localToGlobal(Offset.zero).dy;
+    String? active;
+    var closest = double.negativeInfinity;
+    for (final entry in _sectionKeys.entries) {
+      final section =
+          entry.value.currentContext?.findRenderObject() as RenderBox?;
+      if (section != null) {
+        final position = section.localToGlobal(Offset.zero).dy;
+        if (position <= top + 60 && position > closest) {
+          active = entry.key;
+          closest = position;
+        }
+      }
+    }
+    if (_productScroll.offset <= 1) {
+      active = null;
+    } else if (_productScroll.position.extentAfter <= 1 &&
+        _page == _lastPage &&
+        _products.isNotEmpty) {
+      active = _products.last['category'] as String;
+    }
+    if (active != _category) {
+      setState(() => _category = active);
+      _revealPill(active);
+    }
+    if (_productScroll.position.extentAfter < 180 &&
+        _page < _lastPage &&
+        !_more &&
+        _error == null) {
+      _load(next: true);
+    }
+  }
+
+  Future<void> _selectCollection(String collection) async {
+    if (_collection == collection) return;
+    _jumpGeneration++;
+    _jumping = false;
+    _collection = collection;
+    _category = null;
     _query = '';
     _search.clear();
     if (_productScroll.hasClients) _productScroll.jumpTo(0);
-    _load();
+    await _load();
+  }
+
+  Future<void> _toggleFavorite(Map<String, dynamic> product) async {
+    final id = product['id'] as String;
+    if (_savingFavorites.contains(id)) return;
+    final favorite = product['is_favorite'] != true;
+    setState(() => _savingFavorites.add(id));
+    try {
+      await widget.session.commerceRequest(
+        'PUT',
+        '/catalog/$id/favorite',
+        body: {'is_favorite': favorite},
+      );
+      if (!mounted) return;
+      setState(() {
+        for (final row in _products) {
+          if (row['id'] == id) row['is_favorite'] = favorite;
+        }
+      });
+      await _load();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Favorit belum dapat disimpan. Coba lagi.'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _savingFavorites.remove(id));
+    }
   }
 
   void _add(Map<String, dynamic> product) {
@@ -323,7 +489,6 @@ class _CatalogPageState extends State<CatalogPage> {
         );
 
   Widget _menu(BuildContext context) {
-    final compact = MediaQuery.sizeOf(context).width < 360;
     final shopping = widget.shopping;
     final subtotal =
         shopping?.lines.values.fold<int>(
@@ -336,199 +501,317 @@ class _CatalogPageState extends State<CatalogPage> {
         0;
     return Column(
       children: [
-        Container(
-          color: Colors.white,
-          padding: const EdgeInsets.fromLTRB(20, 4, 20, 14),
-          child: Column(
-            children: [
-              DeliverySummary(
-                compact: true,
-                address: shopping?.address,
-                slot: shopping?.slot,
-                onTap: shopping?.locked == true ? null : widget.chooseDelivery,
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _search,
-                maxLength: 100,
-                textInputAction: TextInputAction.search,
-                decoration: InputDecoration(
-                  hintText: 'Cari kebutuhanmu',
-                  counterText: '',
-                  fillColor: const Color(0xFFF5F7F8),
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 10,
-                  ),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(30),
-                    borderSide: BorderSide.none,
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(30),
-                    borderSide: BorderSide.none,
-                  ),
-                  prefixIcon: const Icon(Icons.search_rounded, size: 21),
-                  suffixIcon: IconButton(
-                    tooltip: 'Cari',
-                    onPressed: () => _searchProducts(_search.text),
-                    icon: const Icon(
-                      Icons.arrow_forward_rounded,
-                      size: 19,
-                      color: AppColors.primary,
-                    ),
-                  ),
-                ),
-                onSubmitted: _searchProducts,
-              ),
-            ],
+        if (!widget.keyboardVisible)
+          CatalogLocationHeader(
+            session: widget.session,
+            storeName: _storeName,
+            address: shopping?.address,
+            onChooseAddress: shopping?.locked == true
+                ? null
+                : widget.chooseDelivery,
           ),
-        ),
-        const Divider(height: 1, color: AppColors.borderLight),
-        Expanded(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              SizedBox(
-                width: MediaQuery.textScalerOf(context).scale(1) > 1.25
-                    ? 96
-                    : compact
-                    ? 76
-                    : 88,
-                child: ColoredBox(
-                  color: const Color(0xFFF5F7F8),
-                  child: Scrollbar(
-                    controller: _categoryScroll,
-                    child: ListView(
-                      key: const ValueKey('catalog-categories'),
-                      controller: _categoryScroll,
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      children: [
-                        _categoryTab(null, 'Semua'),
-                        for (final category in _categories)
-                          _categoryTab(category, category),
-                      ],
+        ColoredBox(
+          color: Colors.white,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 12, 8),
+            child: Row(
+              children: [
+                IconButton.outlined(
+                  key: const ValueKey('catalog-collection-frequent'),
+                  tooltip: 'Paling sering dipesan',
+                  isSelected: _collection == 'frequent',
+                  onPressed: () => _selectCollection('frequent'),
+                  style: IconButton.styleFrom(
+                    minimumSize: const Size(48, 48),
+                    backgroundColor: _collection == 'frequent'
+                        ? AppColors.primaryLight
+                        : Colors.white,
+                    side: BorderSide(
+                      color: _collection == 'frequent'
+                          ? AppColors.primary
+                          : const Color(0xFFBABFBC),
                     ),
                   ),
+                  icon: const Icon(
+                    Icons.star_rounded,
+                    color: Color(0xFFE6BA56),
+                    size: 24,
+                  ),
                 ),
-              ),
-              Expanded(
-                child: ColoredBox(
-                  color: Colors.white,
-                  child: RefreshIndicator(
-                    onRefresh: () => _load(),
-                    child: ListView(
-                      key: const ValueKey('catalog-products'),
-                      controller: _productScroll,
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      padding: const EdgeInsets.fromLTRB(14, 14, 14, 24),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: SingleChildScrollView(
+                    key: const ValueKey('catalog-categories'),
+                    controller: _categoryScroll,
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
                       children: [
-                        if (_query.isEmpty &&
-                            _category == null &&
-                            !_loading &&
-                            _products.isNotEmpty &&
-                            MediaQuery.textScalerOf(context).scale(1) <=
-                                1.25) ...[
-                          _deliveryBanner(),
-                          const SizedBox(height: 20),
-                        ],
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                _query.isNotEmpty
-                                    ? 'Hasil pencarian'
-                                    : _category ?? 'Pilihan barang',
-                                style: const TextStyle(
-                                  fontSize: 17,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: -0.4,
-                                ),
-                              ),
-                            ),
-                            IconButton(
-                              tooltip: 'Muat ulang',
-                              onPressed: _loading ? null : () => _load(),
-                              icon: const Icon(
-                                Icons.refresh_rounded,
-                                size: 19,
-                                color: AppColors.textMuted,
-                              ),
-                            ),
-                          ],
+                        ChoiceChip(
+                          key: const ValueKey('catalog-collection-favorites'),
+                          label: const Icon(
+                            Icons.favorite_border_rounded,
+                            size: 18,
+                          ),
+                          tooltip: 'Barang favorit',
+                          selected: _collection == 'favorites',
+                          shape: const StadiumBorder(),
+                          showCheckmark: false,
+                          selectedColor: AppColors.primaryLight,
+                          backgroundColor: Colors.white,
+                          side: const BorderSide(color: Color(0xFFBABFBC)),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 9,
+                          ),
+                          onSelected: (_) => _selectCollection(
+                            _collection == 'favorites' ? 'all' : 'favorites',
+                          ),
                         ),
-                        if (_loading)
-                          const Padding(
-                            padding: EdgeInsets.all(32),
-                            child: Center(child: CircularProgressIndicator()),
-                          )
-                        else if (_error != null && !_retryNext)
-                          _message(
-                            Icons.cloud_off_outlined,
-                            'Koneksi belum tersedia',
-                            _error!,
-                            action: () => _load(),
-                            actionText: 'Coba lagi',
-                          )
-                        else if (_products.isEmpty)
-                          _message(
-                            Icons.inventory_2_outlined,
-                            _query.isEmpty && _category == null
-                                ? 'Katalog sedang disiapkan'
-                                : 'Produk tidak ditemukan',
-                            _query.isEmpty && _category == null
-                                ? 'Tarik layar untuk memuat ulang.'
-                                : 'Coba kategori atau kata pencarian lain.',
-                            action: _query.isEmpty && _category == null
-                                ? null
-                                : () {
-                                    _search.clear();
-                                    _searchProducts('');
-                                  },
-                            actionText: 'Lihat semua produk',
-                          )
-                        else ...[
-                          for (final product in _products)
-                            _productTile(product),
-                          if (_error != null)
-                            _message(
-                              Icons.wifi_off_rounded,
-                              'Belum dapat memuat lagi',
-                              _error!,
-                              action: () => _load(next: true),
-                              actionText: 'Coba lagi',
-                            )
-                          else if (_page < _lastPage)
-                            Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                              child: OutlinedButton(
-                                onPressed: _more
-                                    ? null
-                                    : () => _load(next: true),
-                                child: Text(
-                                  _more ? 'Memuat...' : 'Muat produk lainnya',
-                                ),
-                              ),
-                            ),
+                        const SizedBox(width: 8),
+                        for (final category in <String?>[null, ..._categories])
                           Padding(
-                            padding: const EdgeInsets.only(top: 20),
-                            child: Text(
-                              'Dari $_depot. Harga dan stok diperiksa saat checkout.',
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                fontSize: 10,
-                                height: 1.6,
-                                color: AppColors.textMuted,
+                            key: _pillKeys.putIfAbsent(
+                              category ?? 'all',
+                              () => GlobalKey(),
+                            ),
+                            padding: const EdgeInsets.only(right: 8),
+                            child: ChoiceChip(
+                              key: ValueKey('category-${category ?? 'all'}'),
+                              label: Text(category ?? 'Semua'),
+                              selected:
+                                  _collection != 'frequent' &&
+                                  _category == category,
+                              shape: const StadiumBorder(),
+                              side: BorderSide(
+                                color: _category == category
+                                    ? AppColors.primary
+                                    : const Color(0xFFBABFBC),
                               ),
+                              backgroundColor: Colors.white,
+                              selectedColor: AppColors.primaryLight,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 9,
+                              ),
+                              labelPadding: const EdgeInsets.symmetric(
+                                horizontal: 4,
+                              ),
+                              labelStyle: TextStyle(
+                                fontSize: 12,
+                                fontWeight: _category == category
+                                    ? FontWeight.w700
+                                    : FontWeight.w500,
+                                color: _category == category
+                                    ? AppColors.primaryDark
+                                    : AppColors.textBody,
+                              ),
+                              materialTapTargetSize:
+                                  MaterialTapTargetSize.padded,
+                              elevation: 0,
+                              pressElevation: 0,
+                              showCheckmark: false,
+                              onSelected: _loading || _more
+                                  ? null
+                                  : (_) => _selectCategory(category),
                             ),
                           ),
-                        ],
                       ],
                     ),
                   ),
                 ),
+                const SizedBox(width: 8),
+                IconButton.outlined(
+                  tooltip: _searchOpen ? 'Tutup pencarian' : 'Cari barang',
+                  onPressed: () => setState(() => _searchOpen = !_searchOpen),
+                  style: IconButton.styleFrom(
+                    minimumSize: const Size(48, 48),
+                    side: const BorderSide(color: Color(0xFFBABFBC)),
+                    backgroundColor: _query.isEmpty
+                        ? Colors.white
+                        : AppColors.primaryLight,
+                  ),
+                  icon: Icon(
+                    _searchOpen ? Icons.close : Icons.search,
+                    color: AppColors.textMain,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (_searchOpen)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+            child: TextField(
+              controller: _search,
+              autofocus: true,
+              onChanged: _searchProducts,
+              textInputAction: TextInputAction.search,
+              onSubmitted: (_) => FocusScope.of(context).unfocus(),
+              decoration: InputDecoration(
+                hintText: 'Cari kebutuhanmu',
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon: IconButton(
+                  tooltip: 'Hapus pencarian',
+                  onPressed: () {
+                    _search.clear();
+                    _searchProducts('');
+                  },
+                  icon: const Icon(Icons.close),
+                ),
               ),
-            ],
+            ),
+          ),
+        Expanded(
+          key: _viewportKey,
+          child: RefreshIndicator(
+            onRefresh: () => _load(),
+            child: ListView(
+              key: const ValueKey('catalog-products'),
+              controller: _productScroll,
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        _query.isNotEmpty
+                            ? 'Hasil pencarian'
+                            : _category ??
+                                  switch (_collection) {
+                                    'favorites' => 'Barang favorit',
+                                    'frequent' => 'Paling sering dipesan',
+                                    _ => 'Pilihan barang',
+                                  },
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Muat ulang',
+                      onPressed: _loading ? null : () => _load(),
+                      icon: const Icon(Icons.refresh),
+                    ),
+                  ],
+                ),
+                if (_loading)
+                  const Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Center(child: CircularProgressIndicator()),
+                  )
+                else if (_error != null && !_retryNext)
+                  _message(
+                    Icons.cloud_off_outlined,
+                    'Koneksi belum tersedia',
+                    _error!,
+                    action: () => _load(),
+                    actionText: 'Coba lagi',
+                  )
+                else if (_products.isEmpty)
+                  _message(
+                    Icons.inventory_2_outlined,
+                    switch (_collection) {
+                      'favorites' => 'Belum ada barang favorit',
+                      'frequent' => 'Belum ada riwayat pesanan',
+                      _ =>
+                        _query.isEmpty && _category == null
+                            ? 'Katalog sedang disiapkan'
+                            : 'Produk tidak ditemukan',
+                    },
+                    _collection == 'favorites'
+                        ? 'Ketuk ikon hati pada barang yang kamu suka.'
+                        : 'Coba kategori atau kata pencarian lain.',
+                    action: _query.isNotEmpty || _category != null
+                        ? () {
+                            _search.clear();
+                            _searchProducts('');
+                          }
+                        : null,
+                    actionText: 'Lihat semua produk',
+                  )
+                else
+                  LayoutBuilder(
+                    builder: (context, box) {
+                      final columns =
+                          box.maxWidth >= 300 &&
+                              MediaQuery.textScalerOf(context).scale(1) <= 1.25
+                          ? 2
+                          : 1;
+                      final width =
+                          (box.maxWidth - (columns - 1) * 12) / columns;
+                      final groups = <String, List<Map<String, dynamic>>>{};
+                      for (final product in _products) {
+                        groups
+                            .putIfAbsent(
+                              _collection == 'frequent'
+                                  ? 'Paling sering dipesan'
+                                  : product['category'] as String,
+                              () => [],
+                            )
+                            .add(product);
+                      }
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          for (final group in groups.entries)
+                            Padding(
+                              key: _sectionKeys.putIfAbsent(
+                                group.key,
+                                () => GlobalKey(),
+                              ),
+                              padding: const EdgeInsets.only(bottom: 24),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  if (_collection != 'frequent')
+                                    Padding(
+                                      padding: const EdgeInsets.only(
+                                        bottom: 12,
+                                      ),
+                                      child: Text(
+                                        group.key,
+                                        key: ValueKey(
+                                          'section-heading-${group.key}',
+                                        ),
+                                        style: const TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ),
+                                  Wrap(
+                                    spacing: 12,
+                                    runSpacing: 12,
+                                    children: [
+                                      for (final product in group.value)
+                                        SizedBox(
+                                          width: width,
+                                          child: _productTile(product),
+                                        ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                        ],
+                      );
+                    },
+                  ),
+                if (_error != null && _retryNext)
+                  TextButton(
+                    onPressed: () => _load(next: true),
+                    child: const Text('Coba lagi'),
+                  ),
+                if (_page < _lastPage && !_loading)
+                  OutlinedButton(
+                    onPressed: _more ? null : () => _load(next: true),
+                    child: Text(_more ? 'Memuat...' : 'Muat produk lainnya'),
+                  ),
+              ],
+            ),
           ),
         ),
         if (shopping != null &&
@@ -541,6 +824,7 @@ class _CatalogPageState extends State<CatalogPage> {
             action: 'Checkout',
             onPressed: widget.openCart,
             buttonKey: const ValueKey('catalog-checkout'),
+            compact: true,
             tinted: true,
             icon: Icons.arrow_forward_rounded,
           ),
@@ -548,198 +832,155 @@ class _CatalogPageState extends State<CatalogPage> {
     );
   }
 
-  Widget _deliveryBanner() => Container(
-    padding: const EdgeInsets.fromLTRB(16, 18, 6, 16),
-    decoration: BoxDecoration(
-      color: const Color(0xFFE8F4F1),
-      borderRadius: BorderRadius.circular(18),
-    ),
-    child: LayoutBuilder(
-      builder: (context, box) {
-        final largeText = MediaQuery.textScalerOf(context).scale(1) > 1.25;
-        final words = Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Belanja,\nkami antar.',
-              style: TextStyle(
-                fontSize: 19,
-                fontWeight: FontWeight.w800,
-                height: 1.25,
-                letterSpacing: -0.7,
-                color: AppColors.primaryDark,
-              ),
-            ),
-            const SizedBox(height: 10),
-            const Text(
-              'Pilih barang & jadwal.\nBayar saat diterima.',
-              style: TextStyle(
-                fontSize: 11,
-                height: 1.6,
-                color: AppColors.textBody,
-              ),
-            ),
-          ],
-        );
-        final art = ExcludeSemantics(
-          child: SizedBox(
-            width: 72,
-            height: 98,
-            child: Transform.rotate(
-              angle: 0.12,
-              child: const ProductArt(category: 'Paket', transparent: true),
-            ),
-          ),
-        );
-        return largeText || box.maxWidth < 230
-            ? words
-            : Row(
-                children: [
-                  Expanded(child: words),
-                  art,
-                ],
-              );
-      },
-    ),
-  );
-
-  Widget _categoryTab(String? value, String label) {
-    final active = _category == value;
-    return Semantics(
-      button: true,
-      selected: active,
-      label: label,
-      child: Material(
-        color: active ? Colors.white : Colors.transparent,
-        child: InkWell(
-          key: ValueKey('category-${value ?? 'all'}'),
-          onTap: () => _selectCategory(value),
-          child: Container(
-            constraints: const BoxConstraints(minHeight: 76),
-            decoration: BoxDecoration(
-              border: Border(
-                left: BorderSide(
-                  color: active ? AppColors.primary : Colors.transparent,
-                  width: 3,
-                ),
-              ),
-            ),
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 20),
-            alignment: Alignment.center,
-            child: Text(
-              label,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 11,
-                height: 1.5,
-                fontWeight: active ? FontWeight.w800 : FontWeight.w500,
-                color: active ? AppColors.primaryDark : AppColors.textMuted,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _productTile(Map<String, dynamic> product) {
     final available = (product['available_quantity'] as int? ?? 0) > 0;
+    final favorite = product['is_favorite'] == true;
+    final name = product['name'] as String;
     final quantity =
         widget.shopping?.lines[product['id']]?['quantity'] as int? ?? 0;
     return Material(
       color: Colors.white,
+      borderRadius: BorderRadius.circular(16),
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () => _detail(product),
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          child: LayoutBuilder(
-            builder: (context, box) {
-              final stacked =
-                  box.maxWidth < 200 ||
-                  MediaQuery.textScalerOf(context).scale(1) > 1.25;
-              final artwork = SizedBox(
-                width: stacked ? double.infinity : 76,
-                height: stacked ? 112 : 100,
-                child: ProductArt(
-                  category: product['category'],
-                  photoUrl: product['photo_url'] as String?,
-                  productName: product['name'] as String?,
-                  baseUrl: widget.session.api.baseUrl,
-                  transparent: true,
-                ),
-              );
-              final info = Column(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            AspectRatio(
+              aspectRatio: 1.1,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  ColoredBox(
+                    color: AppColors.primaryLight,
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: ProductArt(
+                        category: product['category'],
+                        photoUrl: product['photo_url'] as String?,
+                        productName: name,
+                        baseUrl: widget.session.api.baseUrl,
+                        transparent: true,
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    top: 4,
+                    right: 4,
+                    child: IconButton(
+                      tooltip: favorite
+                          ? 'Hapus $name dari favorit'
+                          : 'Favoritkan $name',
+                      style: IconButton.styleFrom(
+                        backgroundColor: Colors.white,
+                      ),
+                      onPressed: _savingFavorites.contains(product['id'])
+                          ? null
+                          : () => _toggleFavorite(product),
+                      icon: Icon(
+                        favorite ? Icons.favorite : Icons.favorite_border,
+                        color: favorite ? AppColors.error : AppColors.primary,
+                        size: 20,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(10),
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    product['name'],
+                    product['category'] as String,
                     style: const TextStyle(
-                      fontSize: 13,
-                      height: 1.5,
-                      fontWeight: FontWeight.w700,
+                      fontSize: 10,
+                      color: AppColors.textMuted,
                     ),
                   ),
                   const SizedBox(height: 5),
-                  Text(
-                    available ? 'per item' : 'Stok habis',
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: available ? AppColors.textMuted : AppColors.error,
+                  ConstrainedBox(
+                    constraints: BoxConstraints(
+                      minHeight: 40 * MediaQuery.textScalerOf(context).scale(1),
+                    ),
+                    child: Text(
+                      name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        height: 1.5,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 10),
-                  Wrap(
-                    alignment: WrapAlignment.spaceBetween,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    spacing: 5,
-                    runSpacing: 4,
-                    children: [
-                      Text(
-                        rupiah(product['unit_price_rp']),
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      if (widget.shopping != null)
-                        Badge(
-                          isLabelVisible: quantity > 0,
-                          label: Text('$quantity'),
-                          backgroundColor: AppColors.primaryDark,
-                          child: IconButton.filled(
-                            tooltip: 'Tambah ${product['name']}',
-                            onPressed: available && !widget.shopping!.locked
-                                ? () => _add(product)
-                                : null,
-                            style: IconButton.styleFrom(
-                              backgroundColor: AppColors.primary,
-                              foregroundColor: Colors.white,
-                              minimumSize: const Size(44, 44),
-                              padding: const EdgeInsets.all(8),
-                            ),
-                            icon: const Icon(Icons.add_rounded, size: 20),
-                          ),
-                        ),
-                    ],
+                  Text(
+                    rupiah(product['unit_price_rp']),
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
-                ],
-              );
-              return stacked
-                  ? Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [artwork, const SizedBox(height: 8), info],
-                    )
-                  : Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
+                  if (widget.shopping != null)
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
                       children: [
-                        artwork,
-                        const SizedBox(width: 10),
-                        Expanded(child: info),
+                        if (quantity > 0) ...[
+                          IconButton.outlined(
+                            tooltip: 'Kurangi $name',
+                            onPressed: widget.shopping!.locked
+                                ? null
+                                : () => widget.shopping!.quantity(
+                                    product['id'] as String,
+                                    quantity - 1,
+                                  ),
+                            style: IconButton.styleFrom(
+                              fixedSize: const Size(32, 32),
+                              minimumSize: const Size(32, 32),
+                              padding: const EdgeInsets.all(6),
+                            ),
+                            icon: const Icon(Icons.remove, size: 18),
+                          ),
+                          ConstrainedBox(
+                            constraints: const BoxConstraints(minWidth: 24),
+                            child: Text(
+                              '$quantity',
+                              key: ValueKey(
+                                'catalog-quantity-${product['id']}',
+                              ),
+                              textAlign: TextAlign.center,
+                              semanticsLabel:
+                                  '$quantity item $name di keranjang',
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ],
+                        IconButton.filled(
+                          tooltip: 'Tambah $name',
+                          onPressed:
+                              available &&
+                                  !widget.shopping!.locked &&
+                                  quantity < 20
+                              ? () => _add(product)
+                              : null,
+                          style: IconButton.styleFrom(
+                            fixedSize: const Size(32, 32),
+                            minimumSize: const Size(32, 32),
+                            padding: const EdgeInsets.all(6),
+                          ),
+                          icon: const Icon(Icons.add, size: 18),
+                        ),
                       ],
-                    );
-            },
-          ),
+                    ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );

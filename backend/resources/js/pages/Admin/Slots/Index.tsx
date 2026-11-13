@@ -49,6 +49,18 @@ export default function Slots({
                     </Button>
                 }
             />
+            <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card p-4">
+                <p className="text-sm text-muted-foreground">
+                    Senin–Jumat 08.00–17.00. Akhir pekan dan libur nasional
+                    09.00–16.00.
+                </p>
+                <Button
+                    variant="outline"
+                    onClick={() => router.post("/admin/slots/prepare")}
+                >
+                    Siapkan jadwal 14 hari
+                </Button>
+            </div>
             <Card className="gap-0 overflow-hidden py-0 shadow-none">
                 <form
                     className="flex flex-wrap items-center gap-3 border-b p-4"

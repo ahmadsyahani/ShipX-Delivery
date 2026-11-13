@@ -154,6 +154,8 @@ class ShoppingState extends ChangeNotifier {
     return {
       'address_id': address?['id'],
       'delivery_slot_id': slot?['id'],
+      if (slot?.containsKey('delivery_type') == true)
+        'delivery_type': slot!['delivery_type'],
       'items': items,
     };
   }

@@ -88,6 +88,21 @@ class CheckoutTest extends TestCase
         $this->assertDatabaseCount('stock_reservations', 0);
     }
 
+    public function test_frequent_catalog_counts_owned_orders_and_excludes_cancelled_orders_before_pagination(): void
+    {
+        $this->create()->assertCreated();
+        $second = $this->create($this->payload(['items' => [['product_id' => (string) $this->a->id, 'quantity' => 1]], 'expected_total_rp' => 18000]))->assertCreated()->json('data.id');
+        $this->getJson('/api/v1/catalog?collection=frequent&per_page=1')->assertOk()
+            ->assertJsonPath('meta.total', 2)->assertJsonPath('data.0.id', (string) $this->a->id)->assertJsonPath('data.0.customer_order_count', 2);
+        $this->getJson('/api/v1/catalog?collection=frequent&per_page=1&page=2')->assertJsonPath('data.0.id', (string) $this->b->id)->assertJsonPath('data.0.customer_order_count', 1);
+        $this->postJson('/api/v1/orders/'.$second.'/cancel', ['lock_version' => 0, 'reason' => 'Tidak jadi'], ['Idempotency-Key' => Str::uuid()->toString()])->assertOk();
+        $this->getJson('/api/v1/catalog?collection=frequent')->assertJsonPath('data.0.customer_order_count', 1);
+        $this->getJson('/api/v1/catalog?collection=frequent&q=missing')->assertJsonCount(0, 'data');
+        $this->app['auth']->forgetGuards();
+        $other = User::factory()->create();
+        $this->withToken($other->createToken('other')->plainTextToken)->getJson('/api/v1/catalog?collection=frequent')->assertJsonCount(0, 'data');
+    }
+
     public function test_checkout_snapshots_items_and_reserves_without_changing_physical_stock(): void
     {
         $data = $this->create()->assertCreated()->assertJsonPath('data.status', 'pending')->assertJsonPath('data.lock_version', 0)->assertJsonPath('data.payment_status', 'unpaid')->assertJsonPath('data.total_rp', 45000)->json('data');
@@ -247,4 +262,38 @@ class CheckoutTest extends TestCase
             $this->assertSame($account->balance_quantity,$sum);
         }
     }
+    public function test_distance_pricing_express_snapshot_and_checkout_revalidation(): void
+    {
+        $this->address->latitude = -7.27;
+        $this->address->save();
+        $payload = $this->payload(['delivery_type' => 'express', 'expected_total_rp' => 49500]);
+        $quote = $payload;
+        unset($quote['expected_total_rp']);
+        $this->postJson('/api/v1/order-quotes', $quote)->assertOk()->assertJsonPath('data.delivery_fee_rp', 7500)->assertJsonPath('data.total_rp', 49500)->assertJsonPath('data.distance_basis', 'straight_line');
+        $key = Str::uuid()->toString();
+        $order = $this->create($payload, $key)->assertCreated()->assertJsonPath('data.delivery_type', 'express')->assertJsonPath('data.delivery_fee_rp', 7500)->json('data');
+        $this->create($payload, $key)->assertCreated()->assertJsonPath('data.id', $order['id']);
+        $this->create(array_replace($payload, ['delivery_type' => 'regular']), $key)->assertStatus(409)->assertJsonPath('code', 'IDEMPOTENCY_CONFLICT');
+        Depot::findOrFail(1)->update(['delivery_per_km_rp' => 2000]);
+        $this->getJson('/api/v1/orders/'.$order['id'])->assertJsonPath('data.delivery_fee_rp', 7500);
+        $this->create($payload)->assertStatus(409)->assertJsonPath('code', 'PRICE_CHANGED');
+        $this->getJson('/api/v1/delivery-slots?date=2026-11-05&delivery_type=express&address_id='.$this->address->id)->assertOk()->assertJsonPath('delivery_options.1.delivery_fee_rp', 10500);
+        $other = User::factory()->create();
+        $this->app['auth']->forgetGuards();
+        $this->withToken($other->createToken('other')->plainTextToken);
+        $this->getJson('/api/v1/delivery-slots?date=2026-11-05&address_id='.$this->address->id)->assertNotFound();
+    }
+
+    public function test_express_requires_preparation_time_and_all_modes_reject_invalid_operating_hours(): void
+    {
+        $this->slot->update(['service_date' => '2026-11-04', 'window_start_at' => '2026-11-04T01:20:00Z', 'window_end_at' => '2026-11-04T02:20:00Z', 'cutoff_at' => '2026-11-04T01:10:00Z']);
+        $payload = $this->payload(['delivery_type' => 'express']);
+        unset($payload['expected_total_rp']);
+        $this->postJson('/api/v1/order-quotes', $payload)->assertStatus(409)->assertJsonPath('code', 'SLOT_CLOSED');
+        $this->getJson('/api/v1/delivery-slots?date=2026-11-04&delivery_type=express&address_id='.$this->address->id)->assertJsonCount(0, 'data');
+        $this->postJson('/api/v1/order-quotes', array_replace($payload, ['delivery_type' => 'regular']))->assertOk();
+        $this->slot->update(['window_end_at' => '2026-11-04T11:00:00Z']);
+        $this->postJson('/api/v1/order-quotes', array_replace($payload, ['delivery_type' => 'regular']))->assertStatus(409)->assertJsonPath('code', 'SLOT_CLOSED');
+    }
+
 }

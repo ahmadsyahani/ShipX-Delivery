@@ -1,32 +1,32 @@
 import 'package:flutter/material.dart';
 
 class AppColors {
-  // Brand Primary: ShipX Ocean Teal
-  static const Color primary = Color(0xFF087E8B);
-  static const Color primaryDark = Color(0xFF05555E);
-  static const Color primaryLight = Color(0xFFE6F4F6);
-  static const Color primaryLighter = Color(0xFFF0F9FA);
+  // Brand Primary: ShipX Forest Green
+  static const Color primary = Color(0xFF006241);
+  static const Color primaryDark = Color(0xFF004D35);
+  static const Color primaryLight = Color(0xFFE7F2EB);
+  static const Color primaryLighter = Color(0xFFF2F8F3);
 
   // Accent: Coral / Amber
   static const Color accent = Color(0xFFF59E0B);
   static const Color accentLight = Color(0xFFFEF3C7);
 
   // Neutrals & Surfaces
-  static const Color background = Color(0xFFF4F7FA);
+  static const Color background = Color(0xFFF7F8F7);
   static const Color surface = Colors.white;
-  static const Color textMain = Color(0xFF182E40);
-  static const Color textBody = Color(0xFF334155); // Slate 700
-  static const Color textMuted = Color(0xFF596D7C);
-  static const Color border = Color(0xFFE2E8F0); // Slate 200
-  static const Color borderLight = Color(0xFFF1F5F9); // Slate 100
+  static const Color textMain = Color(0xFF1C2923);
+  static const Color textBody = Color(0xFF394B40); // Slate 700
+  static const Color textMuted = Color(0xFF6B776F);
+  static const Color border = Color(0xFFDFE7E1); // Slate 200
+  static const Color borderLight = Color(0xFFF0F4F1); // Slate 100
 
   // Status & Alerts
   static const Color success = Color(0xFF059669);
   static const Color successBg = Color(0xFFD1FAE5);
   static const Color warning = Color(0xFFD97706);
   static const Color warningBg = Color(0xFFFEF3C7);
-  static const Color info = Color(0xFF0284C7);
-  static const Color infoBg = Color(0xFFE0F2FE);
+  static const Color info = Color(0xFF25714E);
+  static const Color infoBg = Color(0xFFE5F3E8);
   static const Color purple = Color(0xFF7C3AED);
   static const Color purpleBg = Color(0xFFF3E8FF);
   static const Color error = Color(0xFFDC2626);

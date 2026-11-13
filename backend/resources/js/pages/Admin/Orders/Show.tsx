@@ -117,6 +117,13 @@ export default function OrderDetail({
             <div className="grid items-start gap-6 xl:grid-cols-[1fr_320px]">
                 <div className="space-y-6">
                     <Section title="Tujuan dan jadwal">
+                        <p className="mb-4 text-sm font-semibold text-primary">
+                            {order.delivery_type === "express"
+                                ? "Express · jadwal terdekat"
+                                : "Reguler"}
+                            {order.delivery_distance_m != null &&
+                                ` · ${(order.delivery_distance_m / 1000).toFixed(1)} km perkiraan`}
+                        </p>
                         <div className="grid gap-6 sm:grid-cols-2">
                             <div className="flex items-start gap-3">
                                 <MapPin className="mt-1 size-4 shrink-0 text-primary" />

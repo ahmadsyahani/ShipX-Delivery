@@ -108,6 +108,8 @@ export default function Orders({
                                             className="text-sm font-medium text-primary hover:underline"
                                         >
                                             {order.order_number}
+                                            {order.delivery_type ===
+                                                "express" && " · Express"}
                                         </Link>
                                         <p className="mt-1 text-xs text-muted-foreground">
                                             {order.recipient_name}

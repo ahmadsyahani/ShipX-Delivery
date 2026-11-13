@@ -2,6 +2,7 @@ import type { Order, Vehicle } from "@/types";
 export type SnapshotOrder = {
     id: string;
     order_number: string;
+    delivery_type?: "regular" | "express";
     total_weight_g: number;
     total_volume_cm3: number;
     window_start_at: string;
@@ -35,6 +36,14 @@ export type Route = {
     version_number: number;
     feasibility_status: string;
     input_snapshot: {
+        optimization?: {
+            id: string;
+            algorithm: string;
+            source_reference: string;
+            leg_seconds: number[];
+            matrix_order_ids: string[];
+            matrix_seconds: number[][];
+        };
         plan: Plan;
         courier: { name: string };
         vehicle: Vehicle;
@@ -67,4 +76,18 @@ export const tripStatus: Record<string, string> = {
     awaiting_reconciliation: "Menunggu rekonsiliasi",
     completed: "Selesai",
     cancelled: "Dibatalkan",
+};
+
+export type DeliveryGroup = {
+    key: string;
+    delivery_slot_id: number;
+    service_date: string;
+    window_start_at: string;
+    window_end_at: string;
+    opens_at: string;
+    latest_departure: string;
+    default_departure_local: string;
+    order_count: number;
+    express_count: number;
+    regular_count: number;
 };
