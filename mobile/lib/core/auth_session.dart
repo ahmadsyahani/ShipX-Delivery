@@ -172,7 +172,9 @@ class AuthSession extends ChangeNotifier {
       if (error.status == 401 ||
           (error.status == 403 &&
               (user?.role == 'customer' ||
-                  (user?.role == 'courier' && path.startsWith('/courier/'))))) {
+                  (user?.role == 'courier' &&
+                      (path.startsWith('/courier/') ||
+                          path.startsWith('/notifications')))))) {
         await _clear();
         notifyListeners();
       }

@@ -255,6 +255,14 @@ class _TripMapPageState extends State<TripMapPage>
                             ),
                           ),
                           const SizedBox(height: 8),
+                          if (target.guidance)
+                            const Text(
+                              'Saat navigasi aktif, lokasi dibagikan untuk pengiriman dan notifikasi lokasi tampil di Android.',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: AppColors.textMuted,
+                              ),
+                            ),
                         ],
                         if (_error != null)
                           Text(

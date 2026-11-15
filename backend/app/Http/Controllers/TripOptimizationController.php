@@ -14,8 +14,8 @@ class TripOptimizationController extends Controller
     public function preview(Request $request, Trip $trip, TripOptimizationService $service)
     {
         abort_unless($trip->depot_id === 1, 404);
-        $data = $request->validate(['recommend_departure' => ['sometimes', 'boolean'], 'lock_version' => ['required', 'integer', 'min:0'], 'source_reference' => ['required', 'string', 'max:500'],
-            'matrix_minutes' => ['required', 'array', 'min:2', 'max:21'], 'matrix_minutes.*' => ['required', 'array', 'min:2', 'max:21'], 'matrix_minutes.*.*' => ['required', 'integer', 'min:0', 'max:1440']]);
+        $data = $request->validate(['use_road_provider' => ['sometimes', 'boolean'], 'recommend_departure' => ['sometimes', 'boolean'], 'lock_version' => ['required', 'integer', 'min:0'], 'source_reference' => ['required_unless:use_road_provider,true', 'nullable', 'string', 'max:500'],
+            'matrix_minutes' => ['required_unless:use_road_provider,true', 'array', 'min:2', 'max:21'], 'matrix_minutes.*' => ['array', 'min:2', 'max:21'], 'matrix_minutes.*.*' => ['integer', 'min:0', 'max:1440']]);
         $data['lock_version'] = (int) $data['lock_version'];
         try {
             return response()->json(['data' => $service->preview($request->user()->id, $trip->id, $data)]);

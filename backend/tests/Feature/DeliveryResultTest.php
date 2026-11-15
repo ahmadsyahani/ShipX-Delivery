@@ -104,6 +104,77 @@ class DeliveryResultTest extends TestCase
         ], $overrides);
     }
 
+    public function test_customer_tracking_is_scoped_fresh_expires_and_closes_with_delivery(): void
+    {
+        \Illuminate\Support\Facades\Cache::flush();
+        \Illuminate\Support\Facades\Http::fake([
+            '*/health' => \Illuminate\Support\Facades\Http::response(['status' => 'ok', 'bbox' => [-8, 112, -7, 113], 'dataset_id' => 'qa-tracking']),
+            '*/route' => \Illuminate\Support\Facades\Http::response(['trip' => ['summary' => ['time' => 120, 'length' => 1.1], 'legs' => [['shape' => 'qa']]]]),
+        ]);
+        $as = function (User $user) {
+            $this->app['auth']->forgetGuards();
+            $this->withToken($user->createToken('tracking-test')->plainTextToken);
+        };
+        $publish = '/api/v1/courier/trips/'.$this->trip->id.'/location';
+        $url = '/api/v1/orders/'.$this->orders[0]->id.'/tracking';
+        $data = ['session_id' => Str::uuid()->toString(), 'route_version_id' => $this->trip->selected_route_version_id,
+            'latitude' => -7.251, 'longitude' => 112.751, 'accuracy_m' => 5, 'heading' => 90, 'recorded_at' => now()->toISOString()];
+        $as($this->customer);
+        $this->getJson($url)->assertOk()->assertJsonPath('data.status', 'waiting');
+        $this->postJson($publish, $data)->assertForbidden();
+        $as(User::factory()->create(['role' => 'courier']));
+        $this->postJson($publish, $data)->assertNotFound();
+        $as($this->courier);
+        $this->postJson($publish, [...$data, 'accuracy_m' => 99])->assertUnprocessable();
+        $this->postJson($publish, [...$data, 'recorded_at' => now()->addHour()->toISOString()])->assertStatus(422);
+        $this->postJson($publish, [...$data, 'route_version_id' => 99999])->assertStatus(409);
+        $this->postJson($publish, $data)->assertOk()->assertJsonPath('data.accepted', true);
+        $this->postJson($publish, [...$data, 'recorded_at' => now()->subSecond()->toISOString(), 'latitude' => -7.3])->assertOk()->assertJsonPath('data.accepted', false);
+        $as($this->customer);
+        $this->getJson($url)->assertOk()->assertJsonPath('data.status', 'live')
+            ->assertJsonPath('data.location.latitude', -7.251)->assertJsonPath('data.route.duration_seconds', 120)
+            ->assertJsonMissingPath('data.location.session_id')->assertJsonMissingPath('data.stops');
+        $this->getJson('/api/v1/orders/'.$this->orders[1]->id.'/tracking')->assertOk()
+            ->assertJsonPath('data.is_next_stop', false)->assertJsonPath('data.route', null);
+        $as(User::factory()->create());
+        $this->getJson($url)->assertNotFound();
+        $as($this->customer);
+        $this->travel(61)->seconds();
+        $this->getJson($url)->assertOk()->assertJsonPath('data.status', 'stale')->assertJsonPath('data.route', null);
+        $this->travel(60)->seconds();
+        $this->getJson($url)->assertOk()->assertJsonPath('data.status', 'waiting')->assertJsonPath('data.location', null);
+        $as($this->courier);
+        $data['recorded_at'] = now()->toISOString();
+        $this->postJson($publish, $data)->assertOk();
+        $photo = $this->photo()->assertCreated()->json('data.id');
+        $this->recordResult('delivered', overrides: ['proof_upload_id' => $photo])->assertOk();
+        $as($this->customer);
+        $this->getJson($url)->assertOk()->assertJsonPath('data.status', 'unavailable')->assertJsonPath('data.location', null);
+    }
+
+    public function test_stopped_tracking_session_cannot_resume_or_clear_a_newer_session(): void
+    {
+        \Illuminate\Support\Facades\Cache::flush();
+        $url = '/api/v1/courier/trips/'.$this->trip->id.'/location';
+        $data = ['session_id' => Str::uuid()->toString(), 'route_version_id' => $this->trip->selected_route_version_id,
+            'latitude' => -7.251, 'longitude' => 112.751, 'accuracy_m' => 5, 'recorded_at' => now()->toISOString()];
+        $this->postJson($url, $data)->assertOk();
+        $this->deleteJson($url, $data)->assertOk();
+        $this->postJson($url, $data)->assertStatus(409)->assertJsonPath('code', 'TRACKING_STOPPED');
+        $next = [...$data, 'session_id' => Str::uuid()->toString(), 'recorded_at' => now()->addSecond()->toISOString()];
+        $this->postJson($url, $next)->assertOk();
+        $this->deleteJson($url, $data)->assertOk();
+        $cached = \Illuminate\Support\Facades\Cache::get('shipx.tracking.'.$this->trip->id.'.'.$this->trip->selected_route_version_id);
+        $this->assertSame($next['session_id'], $cached['session_id']);
+        $this->deleteJson($url, $next)->assertOk();
+        $this->assertNull(\Illuminate\Support\Facades\Cache::get('shipx.tracking.'.$this->trip->id.'.'.$this->trip->selected_route_version_id));
+        $this->postJson($url, [...$next, 'session_id' => Str::uuid()->toString(), 'recorded_at' => now()->addSeconds(2)->toISOString()])->assertOk();
+        $this->courier->tokens()->delete();
+        $this->app['auth']->forgetGuards();
+        $this->withToken($this->customer->createToken('tracking-customer')->plainTextToken);
+        $this->getJson('/api/v1/orders/'.$this->orders[0]->id.'/tracking')->assertOk()->assertJsonPath('data.location', null);
+    }
+
     private function readyForReconciliation(): void
     {
         $photo = $this->photo()->assertCreated()->json('data.id');
@@ -111,6 +182,49 @@ class DeliveryResultTest extends TestCase
         $this->recordResult('failed', 1)->assertOk();
         $this->flushHeaders();
         $this->actingAs($this->admin, 'web');
+    }
+
+    public function test_admin_monitor_dashboard_reports_and_csv_follow_results_and_reconciliation(): void
+    {
+        \Illuminate\Support\Facades\Cache::flush();
+        $this->postJson('/api/v1/courier/trips/'.$this->trip->id.'/location', [
+            'session_id' => Str::uuid()->toString(), 'route_version_id' => $this->trip->selected_route_version_id,
+            'latitude' => -7.251, 'longitude' => 112.751, 'accuracy_m' => 5, 'recorded_at' => now()->toISOString(),
+        ])->assertOk();
+        $this->get('/admin/monitor')->assertRedirect('/admin/login');
+        $this->flushHeaders();
+        $this->actingAs($this->admin, 'web');
+        $this->getJson('/admin/monitor/positions')->assertOk()->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.tracking_status', 'live')->assertJsonMissingPath('data.0.location.token_id');
+        $this->get('/admin')->assertInertia(fn ($page) => $page->where('stats.active_trips', 1)->where('stats.unsettled_cod_rp', 0));
+        $period = '/admin/reports?from=2026-11-04&to=2026-11-04';
+        $this->get($period)->assertInertia(fn ($page) => $page->where('stats.orders', 2)->where('stats.cod_received_rp', 0)->has('orders.data', 2));
+        $this->getJson('/admin/reports?from=2026-11-05&to=2026-11-04')->assertStatus(422);
+        auth('web')->logout();
+        $this->app['auth']->forgetGuards();
+        $this->withToken($this->courier->createToken('operations-results')->plainTextToken);
+        $photo = $this->photo()->assertCreated()->json('data.id');
+        $this->recordResult('delivered', overrides: ['proof_upload_id' => $photo])->assertOk();
+        $this->recordResult('failed', 1)->assertOk();
+        $this->flushHeaders();
+        $this->actingAs($this->admin, 'web');
+        $this->get('/admin')->assertInertia(fn ($page) => $page->where('stats.failed_today', 1)->where('stats.unsettled_cod_rp', 48000));
+        $this->get($period)->assertInertia(fn ($page) => $page->where('stats.delivered', 1)->where('stats.failed', 1)->where('stats.cod_received_rp', 48000));
+        $this->post('/admin/trips/'.$this->trip->id.'/reconcile', $this->reconciliationData())->assertRedirect();
+        $this->get($period)->assertInertia(fn ($page) => $page->where('stats.cod_deposited_rp', 48000)->where('stats.cash_difference_rp', 0)->where('stats.stock_difference_items', 0));
+        $this->getJson('/admin/monitor/positions')->assertOk()->assertJsonCount(0, 'data');
+        $this->get('/admin')->assertInertia(fn ($page) => $page->where('stats.active_trips', 0)->where('stats.unsettled_cod_rp', 0));
+        $this->orders[0]->recipient_name = '=1+1';
+        $this->orders[0]->save();
+        $csv = $this->get('/admin/reports/export?from=2026-11-04&to=2026-11-04')->assertOk()->streamedContent();
+        $this->assertStringContainsString("'=1+1", $csv);
+        $this->assertSame(3, count(array_filter(explode("\n", trim($csv)))));
+        $states = $this->courier->notifications()->get()->pluck('data')->pluck('status')->countBy();
+        $this->assertSame(1, $states->get('assigned'));
+        $this->assertSame(1, $states->get('completed'));
+        $this->actingAs($this->customer, 'web');
+        $this->getJson('/admin/monitor/positions')->assertForbidden();
+        $this->get('/admin/reports/export')->assertForbidden();
     }
 
     public function test_reconciliation_returns_each_sku_records_cod_and_releases_claims_once(): void
@@ -138,6 +252,42 @@ class DeliveryResultTest extends TestCase
         $this->get('/admin/trips/'.$this->trip->id)->assertOk();
         $this->post($url, array_replace($data, ['idempotency_key' => Str::uuid()->toString(), 'lock_version' => $this->trip->lock_version]))->assertStatus(409);
         $this->post($url, array_replace($data, ['actual_cash_rp' => 1]))->assertStatus(409);
+    }
+
+    public function test_courier_summary_tracks_results_cash_and_excludes_reconciled_and_foreign_trips(): void
+    {
+        $url = '/api/v1/courier/summary';
+        $this->getJson($url)->assertOk()->assertJsonPath('data.active_trips', 1)
+            ->assertJsonPath('data.pending_stops', 2)->assertJsonPath('data.cod_remaining_rp', 96000)
+            ->assertJsonPath('data.cod_collected_rp', 0);
+        $photo = $this->photo()->assertCreated()->json('data.id');
+        $this->recordResult('delivered', overrides: ['proof_upload_id' => $photo])->assertOk();
+        $this->getJson($url)->assertOk()->assertJsonPath('data.delivered_stops', 1)
+            ->assertJsonPath('data.pending_stops', 1)->assertJsonPath('data.cod_remaining_rp', 48000)
+            ->assertJsonPath('data.cod_collected_rp', 48000);
+        $this->recordResult('failed', 1)->assertOk();
+        $this->getJson($url)->assertOk()->assertJsonPath('data.failed_stops', 1)
+            ->assertJsonPath('data.pending_stops', 0)->assertJsonPath('data.cod_remaining_rp', 0)
+            ->assertJsonPath('data.next_trip.status', 'awaiting_reconciliation');
+        $this->flushHeaders();
+        $this->actingAs($this->admin, 'web');
+        $this->post('/admin/trips/'.$this->trip->id.'/reconcile', $this->reconciliationData())->assertRedirect();
+        auth('web')->logout();
+        $this->app['auth']->forgetGuards();
+        $this->withToken($this->courier->createToken('summary')->plainTextToken);
+        $this->getJson($url)->assertOk()->assertJsonPath('data.active_trips', 0)
+            ->assertJsonPath('data.cod_collected_rp', 0)->assertJsonPath('data.next_trip', null);
+        $this->app['auth']->forgetGuards();
+        $this->withToken(User::factory()->create(['role' => 'courier'])->createToken('other')->plainTextToken);
+        $this->getJson($url)->assertOk()->assertJsonPath('data.total_stops', 0);
+        $this->app['auth']->forgetGuards();
+        $this->withToken($this->customer->createToken('customer')->plainTextToken);
+        $this->getJson($url)->assertForbidden();
+        $this->courier->is_active = false;
+        $this->courier->save();
+        $this->app['auth']->forgetGuards();
+        $this->withToken($this->courier->createToken('inactive')->plainTextToken);
+        $this->getJson($url)->assertForbidden();
     }
 
     public function test_stock_and_cash_discrepancies_require_reasons_and_approval_before_any_mutation(): void

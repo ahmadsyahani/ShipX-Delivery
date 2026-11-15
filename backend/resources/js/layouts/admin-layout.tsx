@@ -39,6 +39,8 @@ const navigation = [
     { href: "/admin", label: "Ringkasan", icon: LayoutDashboard },
     { href: "/admin/orders", label: "Pesanan", icon: ClipboardList },
     { href: "/admin/trips", label: "Trip pengiriman", icon: Truck },
+    { href: "/admin/monitor", label: "Monitor kurir", icon: MapPin },
+    { href: "/admin/reports", label: "Laporan", icon: ClipboardList },
     { href: "/admin/products", label: "Produk", icon: Package },
     { href: "/admin/stock", label: "Stok", icon: Boxes },
     { href: "/admin/slots", label: "Slot pengiriman", icon: CalendarClock },

@@ -1,5 +1,9 @@
 # ERD — ShipX
 
+Pelacakan14November2026 menyimpan fix terakhir dalam cache persisten ber-key trip/rute, mencakup session_id/courier_id/token_id, koordinat, akurasi, heading serta recorded_at/received_at. TTL120detik dan penanda penghentian sesi180detik. Akses customer diturunkan dari orders, active_order_allocations, trips, trip_stops route terpilih, users dan personal_access_tokens yang masih berlaku. Skema tabel bisnis menggunakan relasi yang sudah tersedia.
+
+Checkpoint 14 November 2026 menambah orders.delivery_estimate JSON nullable melalui migration000015. Snapshot memuat provider/dataset_id/travel_mode/calculated_at/distance_basis/travel_seconds, berdampingan dengan delivery_distance_m dan delivery_fee_rp. Pesanan lama mempunyai nilai null. trip_optimizations.input/result dan route_versions.input_snapshot.optimization menambah road_source. trip_departure_reviews.source menerima provider_road_estimate untuk tinjauan yang sama dengan optimasi provider, selain manual_road_estimate yang sudah tersedia. Identitas dataset berasal dari SHA-256 data OSM lokal.
+
 Checkpoint 13 November 2026 menambah product_favorites dengan primary key gabungan user_id/product_id, foreign key ke users/products serta timestamps. Favorit bersifat per customer. Frekuensi pemesanan dihitung dari orders/order_items milik customer yang mengakses. Migration000012 telah diterapkan.
 
 Checkpoint 8 November 2026: migration 000010 sudah Ran, menambah trip_reconciliations (trip UNIQUE, expected/actual cash, signed difference, reason, approved_by/at, inventory_transaction_id UNIQUE) dan reconciliation_items (FK receipt/product, state, expected/actual quantity, signed difference, reason, UNIQUE receipt/product/state). Rekonsiliasi final mengosongkan akun trip, mengkredit barang aktual ke depot sesuai kondisi, mencatat ledger/audit dan completed/actual_return_at serta melepas claims atomik. Collection/order final tidak diubah. Detail ada di RECONCILIATION_CHECKPOINT.md; status belum tersedia di bawah merupakan histori.
@@ -129,3 +133,6 @@ audit_logs: actor_id?, action, entity_type/id, before/after JSON?, reason?, requ
 Lock seluruh inventory accounts SKU secara ID ascending, orders ascending, lalu trip; semua jalur mutation memakai urutan sama. Revalidasi versi/status setelah lock, rollback seluruh order bila satu SKU tidak tersedia. Provider API/upload file di luar transaksi database. Perubahan status delivered, result items, ledger dan COD berada dalam satu transaksi.
 
 Urutan migration: master → order/items → trips → route_versions dan FK terpilih → stops/claims/locks → accounts/reservations/ledger → results/items/proofs → collections/reconciliations/items → audit/idempotency. Migration masih harus dibuat dan diuji di MySQL, termasuk transaksi multi-SKU dan race conditions.
+## Notifikasi dan kontak operasional — 14 November 2026
+
+Migration `2026_11_14_000016` menambah `depots.phone` nullable varchar(30) serta tabel Laravel `notifications`. Kolom notifikasi meliputi UUID primary key, type, notifiable_type/notifiable_id terindeks, data text berisi JSON, read_at nullable dan timestamps. Relasi polymorphic memakai User yang sudah memiliki trait Notifiable. Notifikasi status disimpan bersama transaksi domain agar rollback tidak meninggalkan pesan perubahan yang batal. Posisi GPS tetap menggunakan cache berumur pendek sesuai kontrak tracking.

@@ -2,6 +2,7 @@
 import argparse
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import subprocess
@@ -64,16 +65,43 @@ def bootstrap():
                     '--only-binary=:all:', 'pyvalhalla==3.9.1', 'osmium==4.3.2'], check=True)
 
 
+def depot_bbox():
+    code = '''require "backend/vendor/autoload.php";
+$app = require "backend/bootstrap/app.php";
+$app->make(Illuminate\\Contracts\\Console\\Kernel::class)->bootstrap();
+echo json_encode(App\\Models\\Depot::findOrFail(1)->only(["latitude", "longitude", "service_radius_m"]));'''
+    result = subprocess.run(['php', '-r', code], cwd=ROOT, check=True, capture_output=True, text=True)
+    depot = json.loads(result.stdout)
+    if depot['latitude'] is None or depot['longitude'] is None or not depot['service_radius_m']:
+        raise RuntimeError('Configure the depot location and delivery radius first.')
+    latitude, longitude = float(depot['latitude']), float(depot['longitude'])
+    # Keep extra roads around the delivery circle for detours and edge snapping.
+    latitude_delta = (float(depot['service_radius_m']) + 3000) / 111320
+    longitude_delta = latitude_delta / max(0.01, math.cos(math.radians(latitude)))
+    return [math.floor((latitude - latitude_delta) * 1000) / 1000,
+            math.floor((longitude - longitude_delta) * 1000) / 1000,
+            math.ceil((latitude + latitude_delta) * 1000) / 1000,
+            math.ceil((longitude + longitude_delta) * 1000) / 1000]
+
+
+def graph_directory(bbox):
+    legacy = WORK / 'area.json'
+    if legacy.exists() and json.loads(legacy.read_text(encoding='utf-8'))['bbox'] == bbox:
+        return WORK
+    version = hashlib.sha256(json.dumps(bbox).encode()).hexdigest()[:16]
+    return WORK / 'datasets' / version
+
+
 def build(bbox):
     import osmium
     import valhalla
     from valhalla import get_config
 
+    graph = graph_directory(bbox)
+    graph.mkdir(parents=True, exist_ok=True)
     box = ','.join(str(value) for value in bbox)
-    osm = WORK / 'roads.osm'
-    previous = WORK / 'area.json'
-    if previous.exists() and json.loads(previous.read_text(encoding='utf-8'))['bbox'] != bbox:
-        raise RuntimeError('Area differs from the existing road graph. Use a separate demo folder or keep the current area.')
+    osm = graph / 'roads.osm'
+    previous = graph / 'area.json'
     query = f'[out:xml][timeout:120];(way["highway"]({box});relation["type"="restriction"]({box}););(._;>;);out meta;'
     download('https://overpass-api.de/api/interpreter', osm,
              data=urllib.parse.urlencode({'data': query}).encode(), force=not previous.exists())
@@ -81,10 +109,10 @@ def build(bbox):
     if b'<osm' not in content[:1000] or b'<remark>' in content:
         raise RuntimeError('The OSM response is invalid')
     previous.write_text(json.dumps({'bbox': bbox, 'source': 'OpenStreetMap / Overpass API'}), encoding='utf-8')
-    pbf = WORK / 'roads.osm.pbf'
+    pbf = graph / 'roads.osm.pbf'
     if not pbf.exists():
         print('Converting road extract', flush=True)
-        staging = WORK / 'roads.staging.osm.pbf'
+        staging = graph / 'roads.staging.osm.pbf'
         ways = 0
         with osmium.SimpleWriter(str(staging), overwrite=True) as writer:
             for item in osmium.FileProcessor(str(osm)):
@@ -94,26 +122,32 @@ def build(bbox):
         if not ways:
             raise RuntimeError('The downloaded road extract is empty')
         staging.replace(pbf)
-    tiles = WORK / 'tiles'
+    tiles = graph / 'tiles'
     tiles.mkdir(exist_ok=True)
     config = get_config(tile_dir=str(tiles), tile_extract='')
     config['mjolnir']['concurrency'] = 2
-    config['mjolnir']['admin'] = str(WORK / 'admins.sqlite')
-    config['mjolnir']['timezone'] = str(WORK / 'timezones.sqlite')
+    config['thor']['costmatrix']['allow_second_pass'] = True
+    config['mjolnir']['admin'] = str(graph / 'admins.sqlite')
+    config['mjolnir']['timezone'] = str(graph / 'timezones.sqlite')
     config['mjolnir'].setdefault('logging', {})['type'] = 'std_out'
-    config_path = WORK / 'valhalla.json'
+    config_path = graph / 'valhalla.json'
     config_path.write_text(json.dumps(config, indent=2), encoding='utf-8')
-    ready = WORK / 'ready.json'
+    ready = graph / 'ready.json'
     if not ready.exists():
         package = Path(valhalla.__file__).parent
         builder = package / 'bin' / ('valhalla_build_tiles.exe' if sys.platform == 'win32' else 'valhalla_build_tiles')
         build_environment = dict(os.environ)
         build_environment['PATH'] = str(package.parent / 'pyvalhalla.libs') + os.pathsep + os.environ.get('PATH', '')
         subprocess.run([str(builder), '-c', str(config_path), str(pbf)],
-                       cwd=WORK, env=build_environment, check=True)
+                       cwd=graph, env=build_environment, check=True)
         ready.write_text(json.dumps({'bbox': bbox, 'provider': 'valhalla-3.9.1'}), encoding='utf-8')
     previous.write_text(json.dumps({'bbox': bbox, 'source': 'OpenStreetMap / Overpass API'}), encoding='utf-8')
-    print(f'Routing graph ready in {WORK}', flush=True)
+    # Switch only after a successful build. Existing running graphs remain intact.
+    active = WORK / 'active.json'
+    temporary = WORK / 'active.json.tmp'
+    temporary.write_text(json.dumps({'directory': graph.relative_to(WORK).as_posix()}), encoding='utf-8')
+    temporary.replace(active)
+    print(f'Routing graph ready in {graph}. Run scripts/routing-demo/start.ps1 to activate it.', flush=True)
 
 
 if __name__ == '__main__':
@@ -121,7 +155,10 @@ if __name__ == '__main__':
     parser.add_argument('--bbox', nargs=4, type=float, default=[-7.32, 112.75, -7.23, 112.84],
                         metavar=('SOUTH', 'WEST', 'NORTH', 'EAST'))
     parser.add_argument('--build', action='store_true')
+    parser.add_argument('--depot', action='store_true', help='Cover the configured depot radius with a 3 km road buffer')
     args = parser.parse_args()
+    if args.depot:
+        args.bbox = depot_bbox()
     south, west, north, east = args.bbox
     if not (-90 <= south < north <= 90 and -180 <= west < east <= 180):
         parser.error('Invalid bounding box')

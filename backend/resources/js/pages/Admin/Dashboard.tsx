@@ -1,4 +1,5 @@
-import { Head, Link, usePage } from "@inertiajs/react";
+import { Head, Link, usePage, router } from "@inertiajs/react";
+import { useEffect } from "react";
 import {
     ArrowRight,
     CalendarClock,
@@ -34,12 +35,58 @@ type Props = {
         pending: number;
         confirmed: number;
         open_slots: number;
+        active_trips: number;
+        late_orders: number;
+        failed_today: number;
+        unsettled_cod_rp: number;
     };
     recentOrders: Order[];
 };
 export default function Dashboard({ depot, stats, recentOrders }: Props) {
+    useEffect(() => {
+        const timer = window.setInterval(() => {
+            if (!document.hidden)
+                router.reload({ only: ["stats", "recentOrders"] });
+        }, 15000);
+        return () => window.clearInterval(timer);
+    }, []);
     const { auth } = usePage<Shared>().props;
     const cards = [
+        {
+            label: "Trip aktif",
+            value: stats.active_trips,
+            icon: Truck,
+            href: "/admin/monitor",
+            hint: "Penugasan sampai rekonsiliasi",
+        },
+        {
+            label: "COD belum direkonsiliasi",
+            value: money(stats.unsettled_cod_rp),
+            icon: ClipboardList,
+            href: "/admin/trips?status=awaiting_reconciliation",
+            hint: "Penerimaan pada trip aktif",
+        },
+        {
+            label: "Melewati jadwal",
+            value: stats.late_orders,
+            icon: CalendarClock,
+            href: "/admin/orders",
+            hint: "Pengiriman belum selesai",
+        },
+        {
+            label: "Gagal hari ini",
+            value: stats.failed_today,
+            icon: MapPin,
+            href: "/admin/reports",
+            hint: "Menurut waktu pencatatan hasil",
+        },
+        {
+            label: "Siap disusun ke trip",
+            value: stats.confirmed,
+            icon: Package,
+            href: "/admin/orders?status=confirmed",
+            hint: "Pesanan dikonfirmasi",
+        },
         {
             label: "Menunggu konfirmasi",
             value: stats.pending,
@@ -77,7 +124,7 @@ export default function Dashboard({ depot, stats, recentOrders }: Props) {
                     </Button>
                 }
             />
-            <div className="grid gap-4 md:grid-cols-3">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                 {cards.map(
                     ({ label, value, icon: Icon, href, hint }, index) => (
                         <Link

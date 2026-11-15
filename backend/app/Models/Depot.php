@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class Depot extends Model
 {
-    protected $fillable = ['name', 'address_text', 'latitude', 'longitude', 'timezone', 'service_radius_m', 'delivery_fee_rp', 'pending_ttl_minutes', 'default_service_seconds', 'delivery_per_km_rp', 'express_extra_percent', 'delivery_prep_minutes', 'delivery_speed_kmh'];
+    protected $fillable = ['phone', 'name', 'address_text', 'latitude', 'longitude', 'timezone', 'service_radius_m', 'delivery_fee_rp', 'pending_ttl_minutes', 'default_service_seconds', 'delivery_per_km_rp', 'express_extra_percent', 'delivery_prep_minutes', 'delivery_speed_kmh'];
 
     protected function casts(): array
     {

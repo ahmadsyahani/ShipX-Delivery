@@ -16,12 +16,13 @@ class DepotController extends Controller
     {
         $depot = Depot::findOrFail(1);
 
-        return Inertia::render('Admin/Depot', ['depot' => $depot, 'configured' => $depot->configured(), 'timezoneLocked' => DeliverySlot::where('depot_id', 1)->exists()]);
+        return Inertia::render('Admin/Depot', ['depot' => $depot, 'configured' => $depot->configured(), 'roadPricing' => (bool) config('navigation.road_pricing'), 'timezoneLocked' => DeliverySlot::where('depot_id', 1)->exists()]);
     }
 
     public function update(Request $request)
     {
         $data = $request->validate([
+            'phone' => ['sometimes', 'nullable', 'string', 'max:30', 'regex:/^\+?[0-9][0-9 ()-]{4,28}[0-9]$/'],
             'name' => ['required', 'string', 'max:160'], 'address_text' => ['required', 'string', 'max:2000'],
             'latitude' => ['required', 'numeric', 'between:-90,90'], 'longitude' => ['required', 'numeric', 'between:-180,180'],
             'timezone' => ['required', Rule::in(['Asia/Jakarta', 'Asia/Makassar', 'Asia/Jayapura'])],

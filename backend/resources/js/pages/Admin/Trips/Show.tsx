@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Head, Link, useForm } from "@inertiajs/react";
 import {
     PageHeading,
@@ -31,6 +31,7 @@ import ReconciliationPanel, {
     type ReturnProduct,
 } from "./ReconciliationPanel";
 
+import RoadPreviewPanel, { type RoadPreview } from "./RoadPreviewPanel";
 import OptimizationPanel from "./OptimizationPanel";
 
 type Action = "assign" | "reopen" | "cancel";
@@ -64,6 +65,11 @@ export default function TripDetail({
     reconciliation: Reconciliation | null;
     returnProducts: ReturnProduct[];
 }) {
+    const [roadPreview, setRoadPreview] = useState<RoadPreview | null>(null);
+    useEffect(
+        () => setRoadPreview(null),
+        [trip.lock_version, trip.selected_route.id],
+    );
     const [mode, setMode] = useState<Action | null>(null);
     const form = useForm({
         idempotency_key: "",
@@ -185,9 +191,15 @@ export default function TripDetail({
                     </div>
                 )}
             </Section>
+            <RoadPreviewPanel
+                key={`road-${trip.selected_route.id}-${trip.lock_version}`}
+                trip={trip}
+                onLoaded={setRoadPreview}
+            />
             <DeparturePanel
                 key={`${trip.lock_version}-${trip.selected_route.id}`}
                 trip={trip}
+                roadPreview={roadPreview}
                 manifest={manifest}
                 review={departureReview}
                 schedule={departureSchedule}

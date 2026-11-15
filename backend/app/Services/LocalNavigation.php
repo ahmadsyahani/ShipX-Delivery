@@ -3,8 +3,6 @@
 namespace App\Services;
 
 use App\Exceptions\BusinessFailure;
-use Illuminate\Http\Client\ConnectionException;
-use Illuminate\Support\Facades\Http;
 
 class LocalNavigation
 {
@@ -19,29 +17,12 @@ class LocalNavigation
             || ! is_numeric($address['latitude'] ?? null) || ! is_numeric($address['longitude'] ?? null)) {
             throw new BusinessFailure('NAVIGATION_UNAVAILABLE', 'Tujuan atau kendaraan belum tersedia untuk navigasi.', 409);
         }
-        try {
-            $response = Http::connectTimeout(2)->timeout(12)->post(rtrim(config('navigation.url'), '/').'/route', [
-                'locations' => [
-                    ['lat' => (float) $origin['latitude'], 'lon' => (float) $origin['longitude']],
-                    ['lat' => (float) $address['latitude'], 'lon' => (float) $address['longitude']],
-                ],
-                'costing' => $mode === 'motorcycle' ? 'motorcycle' : 'auto',
-                'directions_options' => ['units' => 'kilometers', 'language' => 'id-ID'],
-            ]);
-        } catch (ConnectionException) {
-            throw new BusinessFailure('ROUTING_OFFLINE', 'Mesin rute demo belum aktif. Jalankan routing lokal di laptop.', 503);
-        }
-        if ($response->status() === 422) {
-            throw new BusinessFailure('ROUTE_NOT_FOUND', 'Rute belum ditemukan dalam area peta demo. Periksa lokasi awal dan tujuan.', 422);
-        }
-        $result = $response->json('trip');
-        $leg = $result['legs'][0] ?? null;
-        if (! $response->successful() || ! is_array($leg) || empty($leg['shape']) || ! isset($result['summary']['time'], $result['summary']['length'])) {
-            throw new BusinessFailure('ROUTING_FAILED', 'Mesin rute belum dapat menghitung perjalanan. Coba lagi.', 503);
-        }
+        $road = app(RoadRouting::class)->route([$origin, $address], $mode);
+        $result = $road['trip'];
+        $leg = $result['legs'][0];
 
         return [
-            'provider' => 'valhalla-local',
+            'provider' => 'valhalla-local', 'road_source' => $road['road_source'],
             'route_version_id' => $trip['route_version_id'],
             'target_id' => $returning ? 'depot' : (string) $next['order_id'],
             'target' => [

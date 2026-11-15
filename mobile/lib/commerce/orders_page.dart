@@ -5,8 +5,9 @@ import '../core/auth_session.dart';
 import '../catalog_page.dart' show rupiah;
 import '../delivery/delivery_page.dart' show slotDate, slotTime;
 import 'shopping_state.dart';
-import 'shop_widgets.dart' show CodTotal;
+import 'shop_widgets.dart' show CodTotal, DeliveryEstimateNote;
 import 'order_refresh.dart';
+import 'tracking_page.dart';
 import '../courier/delivery_result_view.dart';
 
 String orderStatus(String value) => switch (value) {
@@ -548,6 +549,21 @@ class _OrderDetailPageState extends State<OrderDetailPage>
                         ],
                       ),
                     ),
+                    if (_order!['status'] == 'out_for_delivery') ...[
+                      const SizedBox(height: 16),
+                      FilledButton.icon(
+                        onPressed: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => OrderTrackingPage(
+                              session: widget.session,
+                              orderId: widget.id,
+                            ),
+                          ),
+                        ),
+                        icon: const Icon(Icons.delivery_dining_rounded),
+                        label: const Text('Lacak pengiriman'),
+                      ),
+                    ],
                     const SizedBox(height: 16),
                     AppPanel(
                       child: Column(
@@ -578,6 +594,7 @@ class _OrderDetailPageState extends State<OrderDetailPage>
                             style: const TextStyle(fontSize: 13, height: 1.6),
                           ),
                           const Divider(height: 28),
+                          DeliveryEstimateNote(data: _order!),
                           AppSectionTitle(
                             title: _order!['delivery_type'] == 'express'
                                 ? 'Pengiriman Express'

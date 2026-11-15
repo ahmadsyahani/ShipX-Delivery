@@ -52,7 +52,7 @@ class TripDepartureService
                 throw new BusinessFailure('DEPARTURE_NOT_DUE', 'Belum waktunya berangkat. Tunggu rencana keberangkatan atau minta admin mengubah rencana.');
             }
             $review = TripDepartureReview::where('trip_id', $id)->where('route_version_id', $trip->selected_route_version_id)->where('trip_version', $trip->lock_version)->find($data['departure_review_id']);
-            if (! $review || $review->source !== 'manual_road_estimate' || $review->master_versions != $versions || $review->expires_at <= $now) {
+            if (! $review || ! in_array($review->source, ['manual_road_estimate', 'provider_road_estimate'], true) || $review->master_versions != $versions || $review->expires_at <= $now) {
                 throw new BusinessFailure('DEPARTURE_NOT_REVIEWED', 'Admin perlu meninjau estimasi jalan untuk rencana ini. Tinjauan berlaku 24 jam.');
             }
             $schedule = app(TripScheduleService::class)->evaluate($snapshot, $review->leg_seconds, $now);

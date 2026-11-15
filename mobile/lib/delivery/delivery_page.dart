@@ -7,6 +7,7 @@ import '../core/auth_session.dart';
 import '../catalog_page.dart' show rupiah;
 import 'address_form.dart';
 import '../commerce/shopping_state.dart';
+import '../commerce/shop_widgets.dart' show DeliveryEstimateNote;
 
 DateTime slotLocal(String value, String timezone) {
   final utc = DateTime.parse(value).toUtc();
@@ -246,6 +247,7 @@ class _DeliveryPageState extends State<DeliveryPage> {
         _selectedSlot = null;
         widget.shopping?.chooseSlot(null);
         _slots.clear();
+        _deliveryOptions = [];
       }
     });
     try {
@@ -269,6 +271,10 @@ class _DeliveryPageState extends State<DeliveryPage> {
           _slots.isNotEmpty &&
           !_locked) {
         _chooseSlot(_slots.first);
+      }
+    } on ApiException catch (error) {
+      if (mounted && generation == _generation) {
+        setState(() => _slotError = error.message);
       }
     } catch (_) {
       if (mounted && generation == _generation) {
@@ -546,12 +552,13 @@ class _DeliveryPageState extends State<DeliveryPage> {
                         ),
                       if (express && option != null)
                         Text(
-                          'Persiapan minimum ${option['preparation_minutes']} menit · jarak perkiraan',
+                          'Persiapan & perjalanan minimum ${option['preparation_minutes']} menit',
                           style: const TextStyle(
                             fontSize: 11,
                             color: AppColors.textMuted,
                           ),
                         ),
+                      if (option != null) DeliveryEstimateNote(data: option),
                       if (express && option == null)
                         const Text(
                           'Pilih alamat untuk melihat ongkir',

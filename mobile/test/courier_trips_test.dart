@@ -22,6 +22,7 @@ Map<String, dynamic> trip() => {
       'window_start_at': '2026-11-05T03:00:00Z',
       'window_end_at': '2026-11-05T05:00:00Z',
       'total_rp': 18000,
+      'delivery_type': 'express',
       'address': {
         'recipient_name': 'Penerima QA',
         'phone': '080000',
@@ -90,10 +91,13 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      await tester.tap(find.text('B123QA · Motor QA'));
+      await tester.pumpAndSettle();
       expect(find.text('TR-QA'), findsOneWidget);
       await tester.scrollUntilVisible(find.text('Penerima QA · 080000'), 200);
       expect(find.text('Penerima QA · 080000'), findsOneWidget);
       expect(find.textContaining('Barang snapshot'), findsOneWidget);
+      expect(find.text('Express'), findsWidgets);
       session.removed = true;
       await tester.pump(const Duration(seconds: 15));
       await tester.pumpAndSettle();

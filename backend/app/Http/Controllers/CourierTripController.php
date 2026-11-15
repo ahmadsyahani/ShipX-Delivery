@@ -21,6 +21,45 @@ use Illuminate\Support\Facades\DB;
 
 class CourierTripController extends Controller
 {
+    public function summary(Request $request)
+    {
+        $summary = DB::transaction(function () use ($request) {
+            $trips = Trip::where('courier_id', $request->user()->id)
+                ->whereIn('status', ['assigned', 'in_progress', 'awaiting_reconciliation'])
+                ->orderByRaw("CASE status WHEN 'awaiting_reconciliation' THEN 0 WHEN 'in_progress' THEN 1 ELSE 2 END")
+                ->orderBy('planned_departure_at')->orderBy('id')->get();
+            $stops = DB::table('trip_stops')
+                ->join('trips', 'trips.id', '=', 'trip_stops.trip_id')
+                ->join('orders', 'orders.id', '=', 'trip_stops.order_id')
+                ->whereIn('trips.id', $trips->modelKeys())
+                ->whereColumn('trip_stops.route_version_id', 'trips.selected_route_version_id')
+                ->get(['trip_stops.id', 'trip_stops.status', 'orders.total_rp']);
+            $cash = DB::table('payment_collections')
+                ->join('delivery_results', 'delivery_results.id', '=', 'payment_collections.delivery_result_id')
+                ->whereIn('delivery_results.trip_stop_id', $stops->pluck('id'))
+                ->sum('payment_collections.amount_rp');
+            $next = $trips->first();
+
+            return [
+                'active_trips' => $trips->count(),
+                'total_stops' => $stops->count(),
+                'pending_stops' => $stops->where('status', 'pending')->count(),
+                'delivered_stops' => $stops->where('status', 'delivered')->count(),
+                'failed_stops' => $stops->where('status', 'failed')->count(),
+                'cod_collected_rp' => (int) $cash,
+                'cod_remaining_rp' => (int) $stops->where('status', 'pending')->sum('total_rp'),
+                'updated_at' => now()->toISOString(),
+                'next_trip' => $next ? [
+                    'id' => (string) $next->id,
+                    'trip_number' => $next->trip_number,
+                    'status' => $next->status,
+                ] : null,
+            ];
+        });
+
+        return response()->json(['data' => $summary]);
+    }
+
     public function index(Request $request)
     {
         $request->validate(['page' => ['sometimes', 'integer', 'min:1']]);
@@ -64,16 +103,17 @@ class CourierTripController extends Controller
         if ($detail) {
             $data['depot'] = array_diff_key($snapshot['depot'], ['lock_version' => 1]);
             $data['depot']['id'] = (string) $data['depot']['id'];
+            $data['depot']['phone'] = Depot::findOrFail(1)->phone;
             $data['route_version'] = $trip->selectedRoute->version_number;
             $data['route_version_id'] = (string) $trip->selected_route_version_id;
             $review = app(TripDepartureReviewService::class)->current($trip);
             $load = DB::table('trip_load_confirmations')->where('trip_id', $trip->id)->first();
             $schedule = $load ? json_decode($load->departure_schedule, true, flags: JSON_THROW_ON_ERROR) : $review?->schedule_snapshot;
             $estimates = collect($schedule['stops'] ?? [])->keyBy('order_id');
-            $data['stops'] = collect($snapshot['orders'])->values()->map(fn ($order, $i) => ['sequence_no' => $i + 1, 'order_id' => $order['id'], 'order_number' => $order['order_number'], 'address' => $order['address'], 'items' => $order['items'], 'window_start_at' => $order['window_start_at'], 'window_end_at' => $order['window_end_at'], 'total_rp' => $order['total_rp'], 'estimated_arrival_at' => $estimates->get($order['id'])['estimated_arrival_at'] ?? null, 'estimated_service_start_at' => $estimates->get($order['id'])['estimated_service_start_at'] ?? null]);
+            $data['stops'] = collect($snapshot['orders'])->values()->map(fn ($order, $i) => ['sequence_no' => $i + 1, 'order_id' => $order['id'], 'order_number' => $order['order_number'], 'delivery_type' => $order['delivery_type'] ?? 'regular', 'address' => $order['address'], 'items' => $order['items'], 'window_start_at' => $order['window_start_at'], 'window_end_at' => $order['window_end_at'], 'total_rp' => $order['total_rp'], 'estimated_arrival_at' => $estimates->get($order['id'])['estimated_arrival_at'] ?? null, 'estimated_service_start_at' => $estimates->get($order['id'])['estimated_service_start_at'] ?? null]);
             $data['manifest'] = app(TripManifestService::class)->forTrip($trip);
             $data['departure_review'] = $review ? ['id' => (string) $review->id, 'source' => $review->source, 'source_reference' => $review->source_reference, 'reviewed_at' => $review->reviewed_at->toISOString(), 'expires_at' => $review->expires_at->toISOString()] : null;
-            $data['feasibility_status'] = $review ? 'feasible_manual' : 'not_evaluated';
+            $data['feasibility_status'] = $review ? ($review->source === 'provider_road_estimate' ? 'feasible_provider_reviewed' : 'feasible_manual') : 'not_evaluated';
             $data['estimated_return_at'] = $schedule['estimated_return_at'] ?? null;
             $data['can_start'] = false;
             $data['start_block_reason'] = 'Menunggu tinjauan estimasi jalan oleh admin.';

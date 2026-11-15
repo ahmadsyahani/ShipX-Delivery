@@ -14,6 +14,7 @@ import 'courier_trips_test.dart' show TripSession;
 
 class RouteSession extends TripSession {
   int routes = 0;
+  int locations = 0;
   bool live = false;
   @override
   Future<Map<String, dynamic>> commerceRequest(
@@ -24,6 +25,10 @@ class RouteSession extends TripSession {
     bool envelope = false,
   }) async {
     if (removed) throw const ApiException('Penugasan dicabut', 404);
+    if (path.endsWith('/location')) {
+      if (method == 'POST') locations++;
+      return {'accepted': true};
+    }
     if (method == 'POST') {
       routes++;
       return routeJson();
@@ -43,6 +48,8 @@ class RouteSession extends TripSession {
 }
 
 class RouteLocation extends DeviceLocation {
+  @override
+  Future<void> prepareNavigation() async {}
   int located = 0;
   int watched = 0, cancelled = 0;
   late final updates = StreamController<Position>(
@@ -84,6 +91,40 @@ class MemoryTiles extends TileProvider {
 }
 
 void main() {
+  testWidgets(
+    'active navigation keeps GPS and shares location while app is backgrounded',
+    (tester) async {
+      final session = RouteSession()..live = true;
+      final location = RouteLocation();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: TripNavigationPage(
+            session: session,
+            tripId: '9',
+            location: location,
+            tileProvider: MemoryTiles(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await tester.pump();
+      location.emit(0, .0001);
+      await tester.pump();
+      expect(location.cancelled, 0);
+      expect(session.locations, 1);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+      await tester.pumpWidget(const SizedBox());
+      expect(location.cancelled, 1);
+      unawaited(location.updates.close());
+      session.dispose();
+    },
+  );
   testWidgets('assigned preview draws route without starting GPS stream', (
     tester,
   ) async {

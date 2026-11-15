@@ -1,3 +1,4 @@
+import RoutingStatus from "@/components/routing-status";
 import { Head, useForm } from "@inertiajs/react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -20,13 +21,16 @@ export default function Depot({
     depot,
     configured,
     timezoneLocked,
+    roadPricing,
 }: {
     depot: DepotData;
     configured: boolean;
     timezoneLocked: boolean;
+    roadPricing: boolean;
 }) {
     const form = useForm({
         name: depot.name,
+        phone: depot.phone ?? "",
         address_text: depot.address_text ?? "",
         latitude: depot.latitude ?? "",
         longitude: depot.longitude ?? "",
@@ -60,6 +64,7 @@ export default function Depot({
                     </Badge>
                 }
             />
+            <RoutingStatus />
             <form
                 className="space-y-6"
                 onSubmit={(e) => {
@@ -84,6 +89,25 @@ export default function Depot({
                             description="Pilih posisi depot di peta. Cakupan layanan mengikuti titik ini."
                         >
                             <div className="grid gap-5 sm:grid-cols-2">
+                                <Field
+                                    id="phone"
+                                    label="Telepon depot"
+                                    error={form.errors.phone}
+                                    hint="Nomor yang dapat dihubungi kurir."
+                                >
+                                    <Input
+                                        id="phone"
+                                        type="tel"
+                                        maxLength={30}
+                                        value={form.data.phone}
+                                        onChange={(event) =>
+                                            form.setData(
+                                                "phone",
+                                                event.target.value,
+                                            )
+                                        }
+                                    />
+                                </Field>
                                 <Field
                                     id="name"
                                     label="Nama depot"
@@ -204,8 +228,8 @@ export default function Depot({
                             </div>
                             <p className="mt-5 text-xs leading-6 text-muted-foreground">
                                 Pilih titik depot sesuai alamat pada peta.
-                                Radius memakai jarak garis lurus, bukan jarak
-                                perjalanan jalan raya.
+                                Radius layanan memakai jarak garis lurus dari
+                                depot.
                             </p>
                         </Section>
                         <Section title="Biaya dan waktu layanan">
@@ -255,31 +279,46 @@ export default function Depot({
                                             7200,
                                         ],
                                     ] as const
-                                ).map(([key, label, min, max]) => (
-                                    <Field
-                                        key={key}
-                                        id={key}
-                                        label={label}
-                                        error={form.errors[key]}
-                                    >
-                                        <Input
+                                )
+                                    .filter(
+                                        ([key]) =>
+                                            !roadPricing ||
+                                            key !== "delivery_speed_kmh",
+                                    )
+                                    .map(([key, label, min, max]) => (
+                                        <Field
+                                            key={key}
                                             id={key}
-                                            type="number"
-                                            required
-                                            min={min}
-                                            max={max}
-                                            step={1}
-                                            value={form.data[key]}
-                                            onChange={(e) =>
-                                                form.setData(
-                                                    key,
-                                                    e.target.value,
-                                                )
-                                            }
-                                        />
-                                    </Field>
-                                ))}
+                                            label={label}
+                                            error={form.errors[key]}
+                                        >
+                                            <Input
+                                                id={key}
+                                                type="number"
+                                                required
+                                                min={min}
+                                                max={max}
+                                                step={1}
+                                                value={form.data[key]}
+                                                onChange={(e) =>
+                                                    form.setData(
+                                                        key,
+                                                        e.target.value,
+                                                    )
+                                                }
+                                            />
+                                        </Field>
+                                    ))}
                             </div>
+                            {roadPricing && (
+                                <p className="mt-5 text-xs leading-6 text-muted-foreground">
+                                    Ongkir memakai jarak jalan dari Valhalla
+                                    untuk motor. Kesiapan Express dihitung dari
+                                    waktu persiapan dan estimasi perjalanan.
+                                    Perencanaan trip mengikuti jenis kendaraan
+                                    yang ditugaskan.
+                                </p>
+                            )}
                         </Section>
                     </div>
                     <Section title="Simpan konfigurasi">

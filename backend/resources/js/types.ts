@@ -55,6 +55,7 @@ export type Product = {
     quarantine_quantity?: number | string | null;
 };
 export type Depot = {
+    phone?: string | null;
     id: number;
     name: string;
     address_text: string | null;
@@ -94,6 +95,13 @@ export type OrderItem = {
 export type Order = {
     delivery_type: "regular" | "express";
     delivery_distance_m: number | null;
+    delivery_estimate?: {
+        provider: string;
+        travel_mode: string;
+        calculated_at: string;
+        travel_seconds: number;
+        distance_basis: string;
+    } | null;
     id: number;
     order_number: string;
     recipient_name: string;

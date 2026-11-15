@@ -46,6 +46,9 @@ class IdempotencyService
                 try {
                     $result = DB::transaction($callback);
                 } catch (BusinessFailure $error) {
+                    if ($error->status >= 500) {
+                        throw $error;
+                    }
                     $result = ['status' => $error->status, 'body' => $error->body()];
                 } catch (ValidationException $error) {
                     $result = ['status' => 422, 'body' => ['message' => 'Data permintaan tidak valid.', 'errors' => $error->errors()]];
@@ -56,6 +59,8 @@ class IdempotencyService
 
                 return $result;
             }, 3);
+        } catch (BusinessFailure $error) {
+            return ['status' => $error->status, 'body' => $error->body()];
         } catch (QueryException $error) {
             if (in_array((int) ($error->errorInfo[1] ?? 0), [1205, 1213], true)) {
                 return ['status' => 409, 'body' => ['message' => 'Permintaan sedang berjalan. Coba lagi dengan key yang sama.', 'code' => 'REQUEST_IN_PROGRESS']];

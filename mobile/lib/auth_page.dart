@@ -11,6 +11,8 @@ import 'commerce/shopping_state.dart';
 import 'commerce/cart_page.dart';
 import 'commerce/orders_page.dart';
 import 'courier/trips_page.dart';
+import 'courier/summary_page.dart';
+import 'notifications_page.dart';
 
 class AuthPage extends StatefulWidget {
   const AuthPage({super.key, required this.session});
@@ -457,7 +459,7 @@ class _RoleHomeState extends State<RoleHome> {
                           'Akun',
                         ][_tab]
                       : user.role == 'courier'
-                      ? ['Trip pengiriman', 'Akun'][_tab]
+                      ? ['Trip pengiriman', 'Ringkasan', 'Akun'][_tab]
                       : title,
                   style: TextStyle(
                     fontSize:
@@ -477,6 +479,34 @@ class _RoleHomeState extends State<RoleHome> {
                     user.role == 'customer' && (_tab != 0 || catalogVisible),
                 toolbarHeight: 58,
                 actions: [
+                  if (['customer', 'courier'].contains(user.role))
+                    NotificationBell(
+                      session: widget.session,
+                      color: catalogVisible ? Colors.white : null,
+                      openTarget: (kind, id) async {
+                        if (!mounted) return;
+                        if (kind == 'order' && _shopping != null) {
+                          await Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => OrderDetailPage(
+                                session: widget.session,
+                                shopping: _shopping!,
+                                id: id,
+                              ),
+                            ),
+                          );
+                        } else if (kind == 'trip' && user.role == 'courier') {
+                          await Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => CourierTripsPage(
+                                session: widget.session,
+                                id: id,
+                              ),
+                            ),
+                          );
+                        }
+                      },
+                    ),
                   if (user.role == 'customer')
                     IconButton(
                       icon: Badge(
@@ -575,6 +605,14 @@ class _RoleHomeState extends State<RoleHome> {
                       label: 'Trip',
                     ),
                     NavigationDestination(
+                      icon: Icon(Icons.space_dashboard_outlined),
+                      selectedIcon: Icon(
+                        Icons.space_dashboard_rounded,
+                        color: AppColors.primary,
+                      ),
+                      label: 'Ringkasan',
+                    ),
+                    NavigationDestination(
                       icon: Icon(Icons.person_outline),
                       selectedIcon: Icon(
                         Icons.person,
@@ -644,6 +682,11 @@ class _RoleHomeState extends State<RoleHome> {
                         CourierTripsPage(
                           session: widget.session,
                           active: _tab == 0,
+                        ),
+                        CourierSummaryPage(
+                          session: widget.session,
+                          active: _tab == 1,
+                          openTrips: () => setState(() => _tab = 0),
                         ),
                         account,
                       ],

@@ -39,8 +39,12 @@ register_shutdown_function($cleanup);
 try{
     DB::statement('CREATE DATABASE `'.$qa.'` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');$created=true;
     DB::purge('mysql');config(['database.connections.mysql.database'=>$qa]);Artisan::call('migrate',['--force'=>true]);
+    config(['navigation.road_pricing'=>false]);
+    $roadMode = ($argv[1] ?? '') === 'roads';
+    if ($roadMode) config(['navigation.road_pricing'=>true]);
     $timezone='Asia/Jakarta';foreach(['Asia/Jakarta','Asia/Makassar','Asia/Jayapura']as $zone){if((int)now($zone)->format('G')<=21){$timezone=$zone;break;}}
     App\Models\Depot::findOrFail(1)->fill(['name'=>'Depot QA terisolasi','address_text'=>'Lokasi pengujian','latitude'=>-7.25,'longitude'=>112.75,'service_radius_m'=>5000,'delivery_fee_rp'=>3000,'timezone'=>$timezone])->save();
+    if ($roadMode) App\Models\Depot::findOrFail(1)->fill(['latitude'=>-7.276804,'longitude'=>112.793124,'service_radius_m'=>2000])->save();
     $admin=App\Models\User::factory()->create(['role'=>'admin','name'=>'QA Admin','email'=>'admin-ui@example.test','password'=>Illuminate\Support\Facades\Hash::make('ShipX-QA-Admin-2026!')]);
     App\Models\User::factory()->create(['role'=>'courier','name'=>'QA Kurir','email'=>'courier-ui@example.test','password'=>Illuminate\Support\Facades\Hash::make('ShipX-QA-Courier-2026!')]);
     foreach([['QA Air',15000],['QA Sabun',12000]]as $i=>[$name,$price]){
@@ -48,24 +52,32 @@ try{
     }
     $local=Carbon\CarbonImmutable::now($timezone)->addHour()->startOfMinute();
     $slot=new App\Models\DeliverySlot(['service_date'=>$local->toDateString(),'window_start_at'=>$local->utc(),'window_end_at'=>$local->addMinutes(30)->utc(),'cutoff_at'=>$local->subMinutes(15)->utc(),'is_active'=>true]);$slot->depot_id=1;$slot->save();
-    $env=getenv();$env['DB_DATABASE']=$qa;$env['DB_CONNECTION']='mysql';$env['SHIPX_QA_HTTP']='1';
+    $env=getenv();$env['DB_DATABASE']=$qa;$env['DB_CONNECTION']='mysql';$env['SHIPX_QA_HTTP']='1';$env['SHIPX_ROAD_PRICING']='false';
     $env['LOCAL_PRIVATE_STORAGE_PATH']=storage_path('framework/testing/ui-proof-qa-'.substr($qa,-20));
-    if (in_array(($argv[1] ?? ''), ['trips','departures'], true)) {
+    if (in_array(($argv[1] ?? ''), ['trips','departures','roads'], true)) {
         App\Models\User::factory()->create(['role'=>'admin','name'=>'QA Trip Admin','email'=>'trips-admin-ui@example.test','password'=>Illuminate\Support\Facades\Hash::make('ShipX-QA-Admin-2026!')]);
         $courier=App\Models\User::where('email','courier-ui@example.test')->firstOrFail();
         $v=new App\Models\Vehicle(['code'=>'QA-TRIP','name'=>'Motor QA trip','plate_number'=>'B2026QA','travel_mode'=>'motorcycle','max_load_weight_g'=>10000,'max_load_volume_cm3'=>10000,'is_active'=>true]);$v->depot_id=1;$v->save();
         $customer=App\Models\User::factory()->create(['name'=>'QA Trip Customer']);
         $address=new App\Models\Address(['label'=>'QA trip','recipient_name'=>'Penerima QA trip','phone'=>'080000','address_text'=>'Alamat QA khusus trip','latitude'=>-7.25,'longitude'=>112.75]);$address->user_id=$customer->id;$address->save();
+        if ($roadMode) $address->fill(['latitude'=>-7.280,'longitude'=>112.790])->save();
         $start=Carbon\CarbonImmutable::now($timezone)->addDays(2)->setTime(10,0);
         $wave=new App\Models\DeliverySlot(['service_date'=>$start->toDateString(),'window_start_at'=>$start->utc(),'window_end_at'=>$start->addHour()->utc(),'cutoff_at'=>$start->subHour()->utc(),'is_active'=>true]);$wave->depot_id=1;$wave->save();
         $p=new App\Models\Product(['sku'=>'QA-TRIP','name'=>'QA Barang trip','category'=>'QA','unit_label'=>'pak','unit_price_rp'=>15000,'shipping_weight_g'=>1000,'length_mm'=>100,'width_mm'=>100,'height_mm'=>100,'is_active'=>true]);$p->depot_id=1;$p->calculateVolume();$p->save();
         app(App\Services\InventoryService::class)->adjust($admin->id,$p->id,'available',10,'QA trip opening',Str::uuid()->toString());
         for($i=0;$i<2;$i++){
-            $o=app(App\Services\CheckoutService::class)->checkout($customer->id,['address_id'=>$address->id,'delivery_slot_id'=>$wave->id,'items'=>[['product_id'=>$p->id,'quantity'=>2]],'expected_total_rp'=>33000]);
+            if ($roadMode && $i === 1) $address->fill(['latitude'=>-7.273,'longitude'=>112.788])->save();
+            $payload=['address_id'=>$address->id,'delivery_slot_id'=>$wave->id,'delivery_type'=>$roadMode && $i===0 ? 'express' : 'regular','items'=>[['product_id'=>$p->id,'quantity'=>2]],'expected_total_rp'=>33000];
+            if ($roadMode) {
+                $quote=app(App\Services\CheckoutService::class)->quote($customer->id,$payload);
+                $payload['expected_total_rp']=$quote['total_rp'];
+            }
+            $o=app(App\Services\CheckoutService::class)->checkout($customer->id,$payload);
             app(App\Services\OrderLifecycleService::class)->decide($admin->id,$o->id,0,'confirmed');
         }
         echo "Manual trip QA: two confirmed orders, courier and vehicle ready.\n";
     }
+    if ($roadMode) $env['SHIPX_ROAD_PRICING']='true';
     if (($argv[1] ?? '') === 'departures') {
         App\Models\User::factory()->create(['role'=>'admin','name'=>'QA Departure Admin','email'=>'departures-admin-ui@example.test','password'=>Illuminate\Support\Facades\Hash::make('ShipX-QA-Admin-2026!')]);
         $courier=App\Models\User::factory()->create(['role'=>'courier','name'=>'QA Departure Courier','email'=>'departures-courier-ui@example.test','password'=>Illuminate\Support\Facades\Hash::make('ShipX-QA-Courier-2026!')]);

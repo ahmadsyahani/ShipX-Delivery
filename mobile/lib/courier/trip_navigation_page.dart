@@ -5,6 +5,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import '../core/map_attribution.dart';
+import '../core/navigation_panels.dart';
 import '../core/app_theme.dart';
 import '../core/auth_api.dart';
 import '../core/auth_session.dart';
@@ -12,6 +13,7 @@ import '../core/device_location.dart';
 import '../commerce/order_refresh.dart';
 import 'trip_navigation_target.dart';
 import 'navigation_route.dart';
+import 'location_sharing.dart';
 
 class TripNavigationPage extends StatefulWidget {
   const TripNavigationPage({
@@ -40,6 +42,10 @@ class _TripNavigationPageState extends State<TripNavigationPage>
   LatLng? _position;
   StreamSubscription<Position>? _location;
   AppLifecycleListener? _lifecycle;
+  TripLocationSharing? _sharing;
+  Timer? _backgroundTimer;
+  bool _background = false;
+  String? _sharingNotice;
   bool _busy = true, _rerouting = false, _checking = false, _mapReady = false;
   bool _following = true;
   int _generation = 0, _offRouteFixes = 0;
@@ -52,16 +58,27 @@ class _TripNavigationPageState extends State<TripNavigationPage>
   @override
   void initState() {
     super.initState();
+    _background = [
+      AppLifecycleState.hidden,
+      AppLifecycleState.paused,
+    ].contains(WidgetsBinding.instance.lifecycleState);
     _initialize();
     startOrderRefresh(_checkAssignment);
     _lifecycle = AppLifecycleListener(
+      onHide: () => _background = true,
       onPause: () {
-        if (_target?.guidance != true || !mounted) return;
-        _invalidate(
-          'Navigasi dijeda saat ShipX ditinggalkan. Tekan Coba lagi untuk melanjutkan.',
-        );
+        _background = true;
+      },
+      onResume: () {
+        _background = false;
+        unawaited(_checkAssignment());
       },
     );
+    _backgroundTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+      if (_background && _target?.guidance == true) {
+        unawaited(_checkAssignment());
+      }
+    });
   }
 
   bool _current(int generation) => mounted && generation == _generation;
@@ -83,6 +100,8 @@ class _TripNavigationPageState extends State<TripNavigationPage>
 
   Future<void> _initialize() async {
     final generation = ++_generation;
+    await _sharing?.stop();
+    _sharing = null;
     await _location?.cancel();
     _location = null;
     if (!_current(generation)) return;
@@ -90,6 +109,7 @@ class _TripNavigationPageState extends State<TripNavigationPage>
       _busy = true;
       _error = null;
       _notice = null;
+      _sharingNotice = null;
       _route = null;
       _mapReady = false;
       _along = 0;
@@ -105,6 +125,9 @@ class _TripNavigationPageState extends State<TripNavigationPage>
         );
       }
       _target = target;
+      if (target.guidance && _background) {
+        throw const LocationFailure('Buka ShipX untuk memulai navigasi.');
+      }
       final point = target.guidance
           ? await widget.location.locate()
           : tripPoint(trip['depot'] as Map?);
@@ -118,6 +141,33 @@ class _TripNavigationPageState extends State<TripNavigationPage>
       await _requestRoute(point, generation);
       if (!_current(generation)) return;
       if (target.guidance) {
+        if (_background) {
+          throw const LocationFailure('Buka ShipX untuk memulai navigasi.');
+        }
+        await widget.location.prepareNavigation();
+        if (!_current(generation)) return;
+        if (_background) {
+          throw const LocationFailure(
+            'Buka ShipX untuk memulai navigasi dan berbagi lokasi.',
+          );
+        }
+        if (trip['status'] == 'in_progress') {
+          _sharingNotice = 'Menunggu GPS untuk membagikan lokasi.';
+          _sharing = TripLocationSharing(
+            session: widget.session,
+            tripId: widget.tripId,
+            routeVersion: '${trip['route_version_id']}',
+            onStatus: (message) {
+              if (_current(generation)) {
+                setState(() => _sharingNotice = message);
+              }
+            },
+            onRevoked: (message) {
+              if (_current(generation)) _invalidate(message);
+            },
+            clock: () => _now,
+          );
+        }
         _location = widget.location.watch().listen(
           _positionChanged,
           onError: (_) {
@@ -178,7 +228,7 @@ class _TripNavigationPageState extends State<TripNavigationPage>
   void _fitMap() {
     if (!_mapReady || _route == null) return;
     if (_target?.guidance == true && _position != null) {
-      _map.move(_position!, 17);
+      _map.moveAndRotate(_position!, 17, -(_heading ?? 0));
     } else {
       _map.fitCamera(
         CameraFit.bounds(
@@ -213,6 +263,7 @@ class _TripNavigationPageState extends State<TripNavigationPage>
       );
       return;
     }
+    unawaited(_sharing?.publish(fix));
     final progress = _route!.project(
       point,
       minimum: math.max(0, _along - 30),
@@ -228,7 +279,9 @@ class _TripNavigationPageState extends State<TripNavigationPage>
       _offRouteFixes = offRoute ? _offRouteFixes + 1 : 0;
       _notice = offRoute ? 'Posisi keluar jalur rute.' : null;
     });
-    if (_mapReady && _following) _map.move(point, _map.camera.zoom);
+    if (_mapReady && _following && !_background) {
+      _map.moveAndRotate(point, _map.camera.zoom, -(_heading ?? 0));
+    }
     final canRetry =
         _lastRouting == null ||
         _now.difference(_lastRouting!) >= const Duration(seconds: 20);
@@ -283,11 +336,18 @@ class _TripNavigationPageState extends State<TripNavigationPage>
         );
       }
     } on ApiException catch (error) {
-      if (_current(generation)) _invalidate(error.message);
+      if (_current(generation)) {
+        if ([401, 403, 404, 409].contains(error.status)) {
+          _invalidate(error.message);
+        } else {
+          setState(() => _notice = error.message);
+        }
+      }
     } catch (_) {
       if (_current(generation)) {
-        _invalidate(
-          'Penugasan belum dapat diperiksa. Periksa koneksi lalu coba lagi.',
+        setState(
+          () => _notice =
+              'Penugasan belum dapat diperiksa. Menunggu koneksi pulih.',
         );
       }
     } finally {
@@ -299,6 +359,8 @@ class _TripNavigationPageState extends State<TripNavigationPage>
     _generation++;
     unawaited(_location?.cancel());
     _location = null;
+    unawaited(_sharing?.stop());
+    _sharing = null;
     setState(() {
       _error = message;
       _route = null;
@@ -313,10 +375,119 @@ class _TripNavigationPageState extends State<TripNavigationPage>
   void dispose() {
     _generation++;
     unawaited(_location?.cancel());
+    unawaited(_sharing?.stop());
+    _backgroundTimer?.cancel();
     _lifecycle?.dispose();
     _map.dispose();
     super.dispose();
   }
+
+  Widget _mapLayer(NavigationRoute route, NavigationStep step) => FlutterMap(
+    mapController: _map,
+    options: MapOptions(
+      initialCenter: _position!,
+      initialZoom: 16,
+      onMapReady: () {
+        _mapReady = true;
+        _fitMap();
+      },
+      onPositionChanged: (_, gesture) {
+        if (gesture) _following = false;
+      },
+    ),
+    children: [
+      TileLayer(
+        tileProvider: widget.tileProvider,
+        urlTemplate: const String.fromEnvironment(
+          'MAP_TILE_URL',
+          defaultValue: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+        ),
+        userAgentPackageName: 'com.example.shipx',
+        panBuffer: 0,
+      ),
+      PolylineLayer(
+        polylines: [
+          Polyline(
+            points: route.points,
+            strokeWidth: 6,
+            color: AppColors.primary,
+            borderStrokeWidth: 2,
+            borderColor: Colors.white,
+          ),
+        ],
+      ),
+      MarkerLayer(
+        markers: [
+          Marker(
+            point: _target!.point,
+            width: 44,
+            height: 44,
+            child: const Icon(
+              Icons.location_on,
+              color: AppColors.primaryDark,
+              size: 44,
+            ),
+          ),
+          Marker(
+            point: route.points[step.beginIndex],
+            width: 26,
+            height: 26,
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
+                border: Border.all(color: AppColors.primary, width: 3),
+              ),
+            ),
+          ),
+          Marker(
+            point: _position!,
+            rotate: true,
+            width: 48,
+            height: 48,
+            child: Transform.rotate(
+              angle:
+                  ((_heading ?? 0) + (_mapReady ? _map.camera.rotation : 0)) *
+                  math.pi /
+                  180,
+              child: Icon(
+                _target!.guidance
+                    ? (_heading == null
+                          ? Icons.my_location
+                          : Icons.navigation_rounded)
+                    : Icons.warehouse_outlined,
+                color: AppColors.primary,
+                size: 42,
+              ),
+            ),
+          ),
+        ],
+      ),
+      Align(
+        alignment: Alignment.centerRight,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: FloatingActionButton.small(
+            heroTag: null,
+            tooltip: _target!.guidance
+                ? 'Ikuti posisi saya'
+                : 'Lihat seluruh rute',
+            backgroundColor: Colors.white,
+            foregroundColor: AppColors.primary,
+            elevation: 2,
+            shape: const CircleBorder(),
+            onPressed: () {
+              _following = true;
+              _fitMap();
+            },
+            child: Icon(
+              _target!.guidance ? Icons.my_location : Icons.zoom_out_map,
+            ),
+          ),
+        ),
+      ),
+    ],
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -325,17 +496,24 @@ class _TripNavigationPageState extends State<TripNavigationPage>
     final remaining = route == null
         ? 0.0
         : math.max(0.0, route.length - _along);
+    final minutes = route == null
+        ? 0
+        : math.max(
+            1,
+            (route.durationSeconds *
+                    (route.length == 0 ? 0 : remaining / route.length) /
+                    60)
+                .ceil(),
+          );
+    final arrival = _now.add(Duration(minutes: minutes));
     final near =
         _target != null &&
         _position != null &&
         remaining < 25 &&
         const Distance().as(LengthUnit.Meter, _position!, _target!.point) < 35;
+    final ready = !_busy && _error == null && route != null;
     return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          _target?.guidance == true ? 'Navigasi kurir' : 'Pratinjau rute',
-        ),
-      ),
+      appBar: ready ? null : AppBar(title: const Text('Navigasi kurir')),
       body: _error != null
           ? Center(
               child: Padding(
@@ -359,210 +537,151 @@ class _TripNavigationPageState extends State<TripNavigationPage>
                 ),
               ),
             )
-          : _busy || route == null
-          ? const Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  CircularProgressIndicator(),
-                  SizedBox(height: 16),
-                  Text('Menyiapkan rute demo…'),
-                ],
-              ),
-            )
-          : Column(
+          : !ready
+          ? const Center(child: CircularProgressIndicator())
+          : Stack(
               children: [
-                Container(
-                  width: double.infinity,
-                  color: AppColors.primaryDark,
-                  padding: const EdgeInsets.all(18),
-                  child: Row(
-                    children: [
-                      Icon(
-                        near
-                            ? Icons.location_on
-                            : navigationTurnIcon(step!.type),
-                        color: Colors.white,
-                        size: 36,
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
+                Positioned.fill(child: _mapLayer(route, step!)),
+                NavigationPanels(
+                  header: Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                    child: Material(
+                      color: AppColors.primaryDark,
+                      borderRadius: BorderRadius.circular(20),
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(4, 12, 16, 14),
+                        child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              _rerouting
-                                  ? 'Menghitung ulang rute…'
-                                  : near
-                                  ? 'Anda dekat tujuan'
-                                  : step!.instruction,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w800,
-                                fontSize: 17,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
+                            const BackButton(color: Colors.white),
+                            Icon(
                               near
-                                  ? _target!.name
-                                  : '${navigationDistance(math.max(0, route.distances[step!.beginIndex] - _along))} lagi',
-                              style: const TextStyle(color: Colors.white70),
+                                  ? Icons.location_on
+                                  : navigationTurnIcon(step.type),
+                              color: Colors.white,
+                              size: 38,
                             ),
-                            if (_target?.guidance != true)
-                              const Text(
-                                'Pratinjau dari depot',
-                                style: TextStyle(color: Colors.white70),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    near
+                                        ? 'Anda dekat tujuan'
+                                        : navigationDistance(
+                                            math.max(
+                                              0,
+                                              route.distances[step.beginIndex] -
+                                                  _along,
+                                            ),
+                                          ),
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 26,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                  Text(
+                                    _rerouting
+                                        ? 'Menghitung ulang rute…'
+                                        : near
+                                        ? _target!.name
+                                        : step.instruction,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w600,
+                                      height: 1.4,
+                                    ),
+                                  ),
+                                  if (_target?.guidance != true)
+                                    const Text(
+                                      'Pratinjau dari depot',
+                                      style: TextStyle(
+                                        color: Colors.white70,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                ],
                               ),
+                            ),
                           ],
                         ),
                       ),
-                    ],
-                  ),
-                ),
-                if (_notice != null)
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(10),
-                    color: AppColors.warningBg,
-                    child: Text(
-                      _notice!,
-                      style: const TextStyle(color: AppColors.textBody),
                     ),
                   ),
-                Expanded(
-                  child: FlutterMap(
-                    mapController: _map,
-                    options: MapOptions(
-                      initialCenter: _position!,
-                      initialZoom: 16,
-                      onMapReady: () {
-                        _mapReady = true;
-                        _fitMap();
-                      },
-                      onPositionChanged: (_, gesture) {
-                        if (gesture) _following = false;
-                      },
+                  footer: Material(
+                    color: Colors.white,
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(24),
                     ),
-                    children: [
-                      TileLayer(
-                        tileProvider: widget.tileProvider,
-                        urlTemplate: const String.fromEnvironment(
-                          'MAP_TILE_URL',
-                          defaultValue:
-                              'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                        ),
-                        userAgentPackageName: 'com.example.shipx',
-                        panBuffer: 0,
-                      ),
-                      PolylineLayer(
-                        polylines: [
-                          Polyline(
-                            points: route.points,
-                            strokeWidth: 6,
-                            color: AppColors.primary,
-                            borderStrokeWidth: 2,
-                            borderColor: Colors.white,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Wrap(
+                            alignment: WrapAlignment.spaceBetween,
+                            spacing: 16,
+                            runSpacing: 8,
+                            children: [
+                              Text(
+                                '$minutes menit',
+                                style: const TextStyle(
+                                  color: AppColors.primary,
+                                  fontSize: 25,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              Text(
+                                '${navigationDistance(remaining)} • Tiba ${arrival.hour.toString().padLeft(2, '0')}.${arrival.minute.toString().padLeft(2, '0')}',
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
-                      MarkerLayer(
-                        markers: [
-                          Marker(
-                            point: _target!.point,
-                            width: 44,
-                            height: 44,
-                            child: const Icon(
-                              Icons.location_on,
-                              color: AppColors.primaryDark,
-                              size: 44,
+                          const SizedBox(height: 6),
+                          Text(
+                            _target!.name,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
                             ),
                           ),
-                          Marker(
-                            point: route.points[step!.beginIndex],
-                            width: 26,
-                            height: 26,
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: AppColors.primary,
-                                  width: 3,
+                          if (_notice != null || _sharingNotice != null)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 6),
+                              child: Text(
+                                _sharingNotice ?? _notice!,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: AppColors.warning,
                                 ),
                               ),
                             ),
-                          ),
-                          Marker(
-                            point: _position!,
-                            width: 48,
-                            height: 48,
-                            child: Transform.rotate(
-                              angle: (_heading ?? 0) * math.pi / 180,
-                              child: Icon(
-                                _target!.guidance
-                                    ? (_heading == null
-                                          ? Icons.my_location
-                                          : Icons.navigation_rounded)
-                                    : Icons.warehouse_outlined,
-                                color: AppColors.primary,
-                                size: 42,
+                          if (_sharing != null && _sharingNotice == null)
+                            const Padding(
+                              padding: EdgeInsets.only(top: 6),
+                              child: Text(
+                                'Lokasi dibagikan selama navigasi aktif',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: AppColors.textMuted,
+                                ),
                               ),
                             ),
+                          const SizedBox(height: 10),
+                          FilledButton(
+                            onPressed: () => Navigator.of(context).pop(true),
+                            child: const Text('Kembali ke detail trip'),
                           ),
+                          const SizedBox(height: 6),
+                          const MapAttribution(),
                         ],
                       ),
-                      const MapAttribution(),
-                      Align(
-                        alignment: Alignment.topRight,
-                        child: Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: FloatingActionButton.small(
-                            heroTag: null,
-                            tooltip: _target!.guidance
-                                ? 'Ikuti posisi saya'
-                                : 'Lihat seluruh rute',
-                            backgroundColor: Colors.white,
-                            foregroundColor: AppColors.primary,
-                            elevation: 2,
-                            shape: const CircleBorder(),
-                            onPressed: () {
-                              _following = true;
-                              _fitMap();
-                            },
-                            child: Icon(
-                              _target!.guidance
-                                  ? Icons.my_location
-                                  : Icons.zoom_out_map,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                SafeArea(
-                  top: false,
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Text(
-                          _target!.name,
-                          style: const TextStyle(fontWeight: FontWeight.w800),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          '${navigationDistance(remaining)} • Estimasi ${math.max(1, (route.durationSeconds * (route.length == 0 ? 0 : remaining / route.length) / 60).ceil())} menit',
-                          style: const TextStyle(color: AppColors.textMuted),
-                        ),
-                        const SizedBox(height: 10),
-                        FilledButton(
-                          onPressed: () => Navigator.of(context).pop(true),
-                          child: const Text('Kembali ke detail trip'),
-                        ),
-                      ],
                     ),
                   ),
                 ),

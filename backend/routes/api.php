@@ -13,8 +13,12 @@ Route::prefix('v1')->group(function (): void {
     Route::post('/auth/register', [AuthController::class, 'register'])->middleware('throttle:register')->name('api.register');
     Route::post('/auth/login', [AuthController::class, 'login'])->middleware('throttle:login');
     Route::middleware(['auth:sanctum', 'active.role'])->group(function (): void {
+        Route::get('notifications', [\App\Http\Controllers\NotificationController::class, 'index']);
+        Route::put('notifications/read-all', [\App\Http\Controllers\NotificationController::class, 'readAll']);
+        Route::put('notifications/{id}/read', [\App\Http\Controllers\NotificationController::class, 'read'])->whereUuid('id');
         Route::get('/catalog', CatalogController::class)->middleware('active.role:customer');
         Route::middleware('active.role:customer')->group(function (): void {
+            Route::get('orders/{id}/tracking', [\App\Http\Controllers\TripTrackingController::class, 'show'])->whereNumber('id')->middleware('throttle:20,1');
             Route::put('/catalog/{product}/favorite', \App\Http\Controllers\ProductFavoriteController::class)->whereNumber('product');
             Route::post('/order-quotes', [OrderController::class, 'quote']);
             Route::post('/orders', [OrderController::class, 'store'])->name('api.orders.store');
@@ -28,6 +32,9 @@ Route::prefix('v1')->group(function (): void {
         Route::get('/me', fn (Request $request) => new UserResource($request->user()));
         Route::get('/delivery-proofs/{proof}', [\App\Http\Controllers\DeliveryProofController::class, 'show'])->whereNumber('proof');
         Route::middleware('active.role:courier')->prefix('courier')->group(function (): void {
+            Route::post('trips/{id}/location', [\App\Http\Controllers\TripTrackingController::class, 'publish'])->whereNumber('id')->middleware('throttle:20,1');
+            Route::delete('trips/{id}/location', [\App\Http\Controllers\TripTrackingController::class, 'stop'])->whereNumber('id')->middleware('throttle:20,1');
+            Route::get('summary', [\App\Http\Controllers\CourierTripController::class, 'summary']);
             Route::get('trips', [\App\Http\Controllers\CourierTripController::class, 'index']);
             Route::get('trips/{id}', [\App\Http\Controllers\CourierTripController::class, 'show'])->whereNumber('id');
             Route::post('trips/{id}/navigation', [\App\Http\Controllers\CourierTripController::class, 'navigation'])->whereNumber('id')->middleware('throttle:30,1');

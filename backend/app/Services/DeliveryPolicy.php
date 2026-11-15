@@ -41,4 +41,22 @@ class DeliveryPolicy
 
         return ['delivery_type' => $type, 'delivery_distance_m' => (int) ceil($distance), 'delivery_fee_rp' => $fee, 'preparation_minutes' => $depot->delivery_prep_minutes + (int) ceil($distance / 1000 / max(1, $depot->delivery_speed_kmh) * 60), 'distance_basis' => 'straight_line'];
     }
+
+    public function forAddress(Depot $depot, float $latitude, float $longitude, string $type): array
+    {
+        if (! config('navigation.road_pricing')) {
+            return $this->pricing($depot, app(DeliveryArea::class)->distance($depot, $latitude, $longitude), $type);
+        }
+        $road = app(RoadRouting::class)->route([
+            ['latitude' => $depot->latitude, 'longitude' => $depot->longitude],
+            ['latitude' => $latitude, 'longitude' => $longitude],
+        ], config('navigation.pricing_mode'));
+        $seconds = (int) ceil($road['trip']['summary']['time']);
+        $pricing = $this->pricing($depot, $road['trip']['summary']['length'] * 1000, $type);
+        $pricing['distance_basis'] = 'road';
+        $pricing['preparation_minutes'] = $depot->delivery_prep_minutes + (int) ceil($seconds / 60);
+        $pricing['delivery_estimate'] = [...$road['road_source'], 'distance_basis' => 'road', 'travel_seconds' => $seconds];
+
+        return $pricing;
+    }
 }

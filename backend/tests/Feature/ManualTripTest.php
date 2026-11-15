@@ -83,7 +83,7 @@ class ManualTripTest extends TestCase
         $this->action($trip, 'assign')->assertRedirect();
         $trip->refresh();
         $version = $trip->lock_version;
-        \Illuminate\Support\Facades\Http::fake(['127.0.0.1:8002/*' => \Illuminate\Support\Facades\Http::response([
+        \Illuminate\Support\Facades\Http::fake(['127.0.0.1:8002/health' => \Illuminate\Support\Facades\Http::response(['status' => 'ok', 'bbox' => [-8, 112, -7, 113], 'dataset_id' => 'qa']), '127.0.0.1:8002/*' => \Illuminate\Support\Facades\Http::response([
             'trip' => ['summary' => ['time' => 180, 'length' => 1.2],
                 'legs' => [['shape' => 'encoded-test-route', 'maneuvers' => [[
                     'type' => 15, 'instruction' => 'Turn left', 'street_names' => ['Jalan QA'],
@@ -100,13 +100,14 @@ class ManualTripTest extends TestCase
             ->assertJsonPath('data.guidance', false)
             ->assertJsonPath('data.distance_m', 1200)
             ->assertJsonPath('data.maneuvers.0.instruction', 'Belok kiri menuju Jalan QA');
-        \Illuminate\Support\Facades\Http::assertSent(fn ($request) => $request['costing'] === 'motorcycle'
+        \Illuminate\Support\Facades\Http::assertSent(fn ($request) => $request->method() === 'POST' && $request['costing'] === 'motorcycle'
             && $request['locations'][1] === ['lat' => -7.25, 'lon' => 112.75]);
         $this->postJson($url, ['latitude' => 91, 'longitude' => 112])->assertUnprocessable();
         $this->assertSame($version, $trip->fresh()->lock_version);
         $this->assertSame('assigned', $trip->fresh()->status);
         $this->assertDatabaseCount('delivery_results', 0);
         $this->assertDatabaseCount('inventory_entries', 1);
+        \Illuminate\Support\Facades\Cache::flush();
         \Illuminate\Support\Facades\Http::fake(fn () => throw new \Illuminate\Http\Client\ConnectionException());
         $this->postJson($url, $origin)->assertStatus(503)->assertJsonPath('code', 'ROUTING_OFFLINE');
         $this->app['auth']->forgetGuards();
@@ -340,11 +341,23 @@ class ManualTripTest extends TestCase
         return ['lock_version' => $version, 'source_reference' => 'Peta jalan QA, mode motor, dua arah diperiksa', 'matrix_minutes' => [[0, 10, 1], [1, 0, 10], [10, 1, 0]]];
     }
 
-    public function test_optimization_preview_apply_replay_and_assignment_use_server_selected_route(): void
+    #[\PHPUnit\Framework\Attributes\TestWith([false])]
+    #[\PHPUnit\Framework\Attributes\TestWith([true])]
+    public function test_optimization_preview_apply_replay_and_assignment_use_server_selected_route(bool $provider): void
     {
+        if ($provider) {
+            \Illuminate\Support\Facades\Cache::flush();
+            $matrix = array_map(fn ($row) => array_map(fn ($minutes) => ['time' => $minutes * 60], $row), $this->optimizationInput()['matrix_minutes']);
+            \Illuminate\Support\Facades\Http::fake([
+                '*/health' => \Illuminate\Support\Facades\Http::response(['status' => 'ok', 'bbox' => [-8, 112, -7, 113], 'dataset_id' => 'qa-optimizer']),
+                '*/matrix' => \Illuminate\Support\Facades\Http::response(['sources_to_targets' => $matrix]),
+                '*/route' => \Illuminate\Support\Facades\Http::response(['trip' => ['summary' => ['time' => 180, 'length' => 1.2], 'legs' => array_fill(0, 3, ['shape' => '_p~iF~ps|U_ulLnnqC_mqNvxq`@', 'summary' => ['time' => 60]])]]),
+            ]);
+        }
         $trip = $this->draft();
         $url = '/admin/trips/'.$trip->id.'/optimization';
-        $preview = $this->postJson($url.'/preview', $this->optimizationInput())->assertOk()->json('data');
+        $input = $provider ? ['lock_version' => 0, 'use_road_provider' => true] : $this->optimizationInput();
+        $preview = $this->postJson($url.'/preview', $input)->assertOk()->json('data');
         $ids = array_map(fn ($order) => (string) $order->id, $this->orders);
         $this->assertSame($ids, $preview['selected']['order_ids']);
         $this->assertDatabaseCount('route_versions', 1);
@@ -358,6 +371,13 @@ class ManualTripTest extends TestCase
         $snapshot = $trip->selectedRoute->input_snapshot;
         $this->assertSame($ids, array_column($snapshot['orders'], 'id'));
         $this->assertSame([60, 60, 60], $snapshot['optimization']['leg_seconds']);
+        if ($provider) {
+            $this->assertSame('qa-optimizer', $snapshot['optimization']['road_source']['dataset_id']);
+            $this->postJson('/admin/trips/'.$trip->id.'/route-preview', ['lock_version' => $trip->lock_version])->assertOk()
+                ->assertJsonCount(3, 'data.shapes')->assertJsonCount(3, 'data.baseline_shapes')
+                ->assertJsonPath('data.leg_seconds', [60, 60, 60]);
+            $this->postJson('/admin/trips/'.$trip->id.'/route-preview', ['lock_version' => 0])->assertStatus(409);
+        }
         $this->assertSame(0, DB::table('active_order_allocations')->count());
         $this->assertSame(1, DB::table('inventory_entries')->count());
         $this->action($trip, 'assign')->assertRedirect();
@@ -371,6 +391,7 @@ class ManualTripTest extends TestCase
         ])->assertRedirect();
         $trip->refresh();
         $review = app(\App\Services\TripDepartureReviewService::class)->current($trip);
+        $this->assertSame($provider ? 'provider_road_estimate' : 'manual_road_estimate', $review->source);
         $this->travelTo(CarbonImmutable::parse('2026-11-05T02:00:00Z'));
         auth('web')->logout();
         $this->app['auth']->forgetGuards();
@@ -378,9 +399,33 @@ class ManualTripTest extends TestCase
         $start = ['lock_version' => $trip->lock_version, 'route_version_id' => $trip->selected_route_version_id, 'departure_review_id' => $review->id,
             'manifest' => array_map(fn ($row) => ['product_id' => $row['product_id'], 'quantity' => $row['quantity']], app(\App\Services\TripManifestService::class)->forTrip($trip))];
         $this->postJson('/api/v1/courier/trips/'.$trip->id.'/start', $start, ['Idempotency-Key' => Str::uuid()->toString()])->assertOk()->assertJsonPath('data.status', 'in_progress');
-        $this->getJson('/api/v1/courier/trips/'.$trip->id)->assertOk()->assertJsonPath('data.stops.0.order_id', $ids[0]);
+        $this->getJson('/api/v1/courier/trips/'.$trip->id)->assertOk()->assertJsonPath('data.stops.0.order_id', $ids[0])->assertJsonPath('data.stops.0.delivery_type', 'regular');
         $this->assertDatabaseCount('trip_load_confirmations', 1);
-
+        if ($provider) {
+            \Illuminate\Support\Facades\Storage::fake('local');
+            foreach (DB::table('trip_stops')->where('trip_id', $trip->id)->orderBy('sequence_no')->get() as $stop) {
+                $photo = \Illuminate\Http\UploadedFile::fake()->createWithContent('proof.png', base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII='));
+                $proof = $this->post('/api/v1/courier/trips/'.$trip->id.'/stops/'.$stop->id.'/proofs', ['photo' => $photo], ['Accept' => 'application/json', 'Idempotency-Key' => Str::uuid()->toString()])->assertCreated()->json('data.id');
+                $order = \App\Models\Order::findOrFail($stop->order_id);
+                $this->postJson('/api/v1/courier/trips/'.$trip->id.'/stops/'.$stop->id.'/result', [
+                    'trip_version' => $trip->fresh()->lock_version, 'order_version' => $order->lock_version,
+                    'outcome' => 'delivered', 'cash_received_rp' => $order->total_rp, 'proof_upload_id' => $proof,
+                ], ['Idempotency-Key' => Str::uuid()->toString()])->assertOk();
+            }
+            $this->assertSame('awaiting_reconciliation', $trip->fresh()->status);
+            $this->flushHeaders();
+            $this->actingAs($this->admin, 'web');
+            $productId = $this->orders[0]->items->first()->product_id;
+            $this->post('/admin/trips/'.$trip->id.'/reconcile', [
+                'idempotency_key' => Str::uuid()->toString(), 'lock_version' => $trip->fresh()->lock_version,
+                'actual_cash_rp' => 66000, 'received_and_approved' => true,
+                'items' => [['product_id' => $productId, 'available_quantity' => 0, 'quarantine_quantity' => 0]],
+            ])->assertRedirect();
+            $this->assertSame('completed', $trip->fresh()->status);
+            $this->assertDatabaseCount('payment_collections', 2);
+            $this->assertDatabaseCount('active_order_allocations', 0);
+            $this->assertDatabaseHas('trip_reconciliations', ['trip_id' => $trip->id, 'expected_cash_rp' => 66000, 'actual_cash_rp' => 66000]);
+        }
     }
 
     public function test_optimization_detects_stale_master_expired_preview_and_wrong_actor(): void

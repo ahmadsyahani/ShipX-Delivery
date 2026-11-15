@@ -77,7 +77,11 @@ Berikutnya:
 - [ ] Rute dan ETA, lalu optimasi urutan pengiriman
 - [ ] Pilot
 
-Catatan: untuk saat ini kelayakan waktu jalan memakai durasi ruas yang diisi manual oleh admin, bukan routing provider atau lalu lintas langsung.
+Ongkir, kesiapan Express, optimasi dan navigasi memakai jalan dari Valhalla lokal. Admin dapat menghitung matriks otomatis, membandingkan rute di peta dan meninjau jadwal sebelum keberangkatan. Pilihan matriks manual tersedia. Estimasi mengikuti model kecepatan data jalan statis.
+
+Untuk demo lokal, jalankan `./scripts/routing-demo/start.ps1` dari root project sebelum mencoba checkout. Mesin perlu aktif bersama Laravel dan MySQL. Penyiapan pertama serta cakupan peta dijelaskan dalam [panduan navigasi lokal](docs/LOCAL_NAVIGATION_DEMO.md).
+
+Launcher lengkap tersedia melalui `./scripts/start-demo.ps1` setelah MySQL diaktifkan di Laragon. Perintah ini memeriksa kesiapan database/depot, mengaktifkan routing, Laravel untuk Wi-Fi HP dan scheduler. Urutan demonstrasi serta bukti uji terbaru tersedia dalam [panduan demo](docs/DEMO_GUIDE.md).
 
 Rincian tiap tahap ada di dokumen checkpoint:
 

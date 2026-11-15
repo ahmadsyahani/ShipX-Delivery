@@ -28,6 +28,7 @@ test('admin previews, applies and assigns an optimized route with road review pr
   await expect(page).toHaveURL(/\/admin\/trips\/\d+$/);
   const tripUrl = page.url();
   const tripId = tripUrl.split('/').pop();
+  await page.getByLabel('Ambil waktu jalan otomatis dari Valhalla').uncheck();
   await page.getByLabel('Sumber waktu jalan', { exact: true }).fill('Peta jalan QA, motor, seluruh arah diperiksa');
   await page.getByText('Tempel tabel dari spreadsheet', { exact: true }).click();
   await page.getByLabel('Tabel waktu jalan dalam menit', { exact: true }).fill('0\t10\t1\n1\t0\t10\n10\t1\t0');
@@ -51,6 +52,7 @@ test('admin previews, applies and assigns an optimized route with road review pr
   expect(current.selected_route.input_snapshot.orders.map((order: { id: string }) => order.id)).toEqual(orders.map((order: { id: number }) => String(order.id)).reverse());
   expect(current.selected_route.input_snapshot.optimization.leg_seconds).toEqual([60, 60, 60]);
   expect(current.planned_departure_at).toBe(previewResult.departure_at);
+  await page.getByLabel('Ambil waktu jalan otomatis dari Valhalla').uncheck();
   await expect(page.getByLabel('Sumber waktu jalan', { exact: true })).toHaveValue('Peta jalan QA, motor, seluruh arah diperiksa');
   await page.getByRole('button', { name: 'Tetapkan trip', exact: true }).click();
   await page.getByRole('alertdialog').getByRole('button', { name: 'Tetapkan trip', exact: true }).click();

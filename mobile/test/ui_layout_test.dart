@@ -18,6 +18,13 @@ import 'package:shipx/commerce/shop_widgets.dart';
 import 'package:shipx/delivery/delivery_page.dart';
 import 'package:shipx/delivery/address_form.dart';
 import 'package:shipx/courier/trip_overview.dart';
+import 'package:shipx/courier/trips_page.dart';
+import 'package:shipx/courier/summary_page.dart';
+import 'package:shipx/notifications_page.dart';
+import 'notifications_test.dart' show InboxSession;
+import 'courier_summary_test.dart' show SummarySession;
+import 'package:shipx/commerce/tracking_page.dart';
+import 'order_tracking_test.dart' show TrackingSession;
 import 'package:shipx/courier/trip_navigation_page.dart';
 import 'local_navigation_page_test.dart'
     show RouteSession, RouteLocation, MemoryTiles;
@@ -102,7 +109,13 @@ void main() {
         });
       }
 
+      final inbox = InboxSession();
+      await mount(
+        NotificationsPage(session: inbox, openTarget: (_, _) async {}),
+      );
+      await snapshot('notifications');
       await mount(AuthPage(session: AuthSession()));
+      inbox.dispose();
       await snapshot('login');
       await tester.ensureVisible(find.text('Masuk').last);
       await tester.pumpAndSettle();
@@ -166,6 +179,24 @@ void main() {
       final courier = _LongTripSession();
       await mount(RoleHome(session: courier));
       await snapshot('courier');
+      final compactCourier = TripSession()
+        ..user = const ShipXUser(
+          '9',
+          'Kurir QA',
+          'courier@example.test',
+          'courier',
+        );
+      await mount(CourierTripsPage(session: compactCourier, id: '9'));
+      await snapshot('courier-detail');
+      expect(tester.takeException(), isNull);
+      final courierSummary = SummarySession();
+      await mount(
+        Scaffold(
+          body: CourierSummaryPage(session: courierSummary, openTrips: () {}),
+        ),
+      );
+      await snapshot('courier-summary');
+      expect(tester.takeException(), isNull);
       final courierTrip = trip()..['status'] = 'in_progress';
       await mount(
         Scaffold(
@@ -187,9 +218,21 @@ void main() {
         ),
       );
       await snapshot('courier-navigation');
+      final trackingCustomer = TrackingSession();
+      await mount(
+        OrderTrackingPage(
+          session: trackingCustomer,
+          orderId: '9',
+          tileProvider: MemoryTiles(),
+          clock: () => DateTime.utc(2026, 11, 14, 2),
+        ),
+      );
+      await snapshot('customer-tracking');
+      expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());
       unawaited(routeLocation.updates.close());
       routeSession.dispose();
+      trackingCustomer.dispose();
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pumpAndSettle();
 
@@ -326,6 +369,8 @@ void main() {
       await tester.pumpAndSettle();
       catalog.dispose();
       courier.dispose();
+      compactCourier.dispose();
+      courierSummary.dispose();
       customer.dispose();
 
       final status = _LayoutOrderSession()..status = 'confirmed';

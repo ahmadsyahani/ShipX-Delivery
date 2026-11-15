@@ -122,7 +122,7 @@ void main() {
     },
   );
   testWidgets(
-    'courier checks both quantities, confirms once, and cannot start a blocked plan',
+    'courier uses automatic manifest, confirms once, and cannot start a blocked plan',
     (tester) async {
       final store = MemoryPending();
       final session = CommerceSession()..persistence = store;
@@ -149,15 +149,11 @@ void main() {
       }
 
       await show(detail());
-      await tester.tap(find.text('Konfirmasi muatan & mulai trip'));
+      expect(find.byType(TextFormField), findsNothing);
+      expect(find.text('Muatan · 6 item'), findsOneWidget);
+      await tester.tap(find.text('Mulai trip'));
       await tester.pumpAndSettle();
-      expect(find.text('Jumlah harus sesuai manifest: 4.'), findsOneWidget);
-      expect(session.requests, isEmpty);
-      await tester.enterText(find.byType(TextFormField).at(0), '4');
-      await tester.enterText(find.byType(TextFormField).at(1), '2');
-      await tester.tap(find.text('Konfirmasi muatan & mulai trip'));
-      await tester.pumpAndSettle();
-      expect(find.text('Konfirmasi muatan dan berangkat?'), findsOneWidget);
+      expect(find.text('Mulai perjalanan?'), findsOneWidget);
       await tester.tap(find.text('Mulai trip sekarang'));
       await tester.pumpAndSettle();
       expect(session.requests.single['body'], payload());
@@ -170,10 +166,7 @@ void main() {
       expect(
         tester
             .widget<FilledButton>(
-              find.widgetWithText(
-                FilledButton,
-                'Konfirmasi muatan & mulai trip',
-              ),
+              find.widgetWithText(FilledButton, 'Mulai trip'),
             )
             .onPressed,
         isNull,

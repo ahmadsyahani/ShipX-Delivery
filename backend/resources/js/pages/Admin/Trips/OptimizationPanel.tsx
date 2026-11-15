@@ -57,6 +57,7 @@ export default function OptimizationPanel({
     const [preview, setPreview] = useState<Preview | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
+    const [useRoadProvider, setUseRoadProvider] = useState(true);
     const [recommendDeparture, setRecommendDeparture] = useState(true);
     const apply = useForm({
         idempotency_key: idempotencyKey,
@@ -99,8 +100,10 @@ export default function OptimizationPanel({
                 {
                     lock_version: trip.lock_version,
                     recommend_departure: recommendDeparture,
-                    source_reference: source,
-                    matrix_minutes: matrix,
+                    use_road_provider: useRoadProvider,
+                    ...(useRoadProvider
+                        ? {}
+                        : { source_reference: source, matrix_minutes: matrix }),
                 },
                 { headers: { Accept: "application/json" } },
             );
@@ -126,134 +129,166 @@ export default function OptimizationPanel({
     return (
         <Section
             title="Optimasi urutan pengantaran"
-            description="Isi waktu jalan sesuai mode kendaraan, lalu bandingkan rute sebelum diterapkan."
+            description="Hitung waktu jalan dari Valhalla sesuai kendaraan, lalu tinjau rekomendasi urutan pengiriman."
         >
             <div className="space-y-5">
                 <p className="text-sm text-muted-foreground">
-                    Baris adalah titik berangkat, kolom adalah tujuan. Isi kedua
-                    arah termasuk kembali ke depot. Prioritas dihitung dari
-                    deadline, penyelesaian Express, dan total waktu jalan.
+                    Prioritas dihitung dari deadline, penyelesaian Express, dan
+                    total waktu jalan termasuk kembali ke depot.
                 </p>
-                <Field id="optimization-source" label="Sumber waktu jalan">
-                    <Input
-                        id="optimization-source"
-                        value={source}
-                        maxLength={500}
+                <label className="flex items-center gap-3 text-sm font-medium">
+                    <input
+                        type="checkbox"
+                        checked={useRoadProvider}
                         disabled={busy || apply.processing}
-                        placeholder="Contoh, hasil pemeriksaan peta jalan untuk motor"
                         onChange={(event) => {
-                            setSource(event.target.value);
+                            setUseRoadProvider(event.target.checked);
                             setPreview(null);
                         }}
                     />
-                </Field>
-                <details>
-                    <summary className="cursor-pointer text-sm font-medium text-primary">
-                        Tempel tabel dari spreadsheet
-                    </summary>
-                    <div className="mt-3 space-y-3">
-                        <Textarea
-                            aria-label="Tabel waktu jalan dalam menit"
-                            value={paste}
-                            disabled={busy || apply.processing}
-                            onChange={(event) => setPaste(event.target.value)}
-                        />
-                        <Button
-                            type="button"
-                            variant="outline"
-                            disabled={busy || apply.processing}
-                            onClick={importTable}
+                    Ambil waktu jalan otomatis dari Valhalla
+                </label>
+                {!useRoadProvider && (
+                    <div className="space-y-4">
+                        <p className="text-sm text-muted-foreground">
+                            Baris adalah titik berangkat dan kolom adalah
+                            tujuan. Isi seluruh arah perjalanan dalam menit.
+                        </p>
+                        <Field
+                            id="optimization-source"
+                            label="Sumber waktu jalan"
                         >
-                            Gunakan tabel
-                        </Button>
-                    </div>
-                </details>
-                <div className="max-w-full overflow-x-auto rounded-xl border">
-                    <table className="w-full text-sm">
-                        <caption className="sr-only">
-                            Waktu jalan antar titik dalam menit
-                        </caption>
-                        <thead>
-                            <tr>
-                                <th className="p-3 text-left">Dari / ke</th>
-                                {names.map((name, i) => (
-                                    <th
-                                        key={name}
-                                        className="min-w-24 p-3"
-                                        title={name}
-                                    >
-                                        {i === 0 ? "Depot" : `Tujuan ${i}`}
-                                    </th>
-                                ))}
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {names.map((name, i) => (
-                                <tr key={name} className="border-t">
-                                    <th
-                                        scope="row"
-                                        className="min-w-36 max-w-48 p-3 text-left font-medium"
-                                    >
-                                        {i === 0 ? (
-                                            "Depot"
-                                        ) : (
-                                            <>
-                                                <span className="block">
-                                                    Tujuan {i}{" "}
-                                                    {orders[i - 1]
-                                                        .delivery_type ===
-                                                        "express" &&
-                                                        "· Express"}
-                                                </span>
-                                                <span className="block break-words text-xs text-muted-foreground">
-                                                    {name}
-                                                </span>
-                                            </>
-                                        )}
-                                    </th>
-                                    {names.map((destination, j) => (
-                                        <td key={destination} className="p-2">
-                                            <Input
-                                                type="number"
-                                                min={0}
-                                                max={1440}
-                                                step={1}
-                                                aria-label={`Waktu ${name} ke ${destination}`}
-                                                value={matrix[i][j]}
-                                                disabled={
-                                                    i === j ||
-                                                    busy ||
-                                                    apply.processing
-                                                }
-                                                onChange={(event) => {
-                                                    setMatrix((rows) =>
-                                                        rows.map((row, r) =>
-                                                            r === i
-                                                                ? row.map(
-                                                                      (
-                                                                          value,
-                                                                          c,
-                                                                      ) =>
-                                                                          c ===
-                                                                          j
-                                                                              ? event
-                                                                                    .target
-                                                                                    .value
-                                                                              : value,
-                                                                  )
-                                                                : row,
-                                                        ),
-                                                    );
-                                                    setPreview(null);
-                                                }}
-                                            />
-                                        </td>
+                            <Input
+                                id="optimization-source"
+                                value={source}
+                                maxLength={500}
+                                disabled={busy || apply.processing}
+                                placeholder="Contoh, hasil pemeriksaan peta jalan untuk motor"
+                                onChange={(event) => {
+                                    setSource(event.target.value);
+                                    setPreview(null);
+                                }}
+                            />
+                        </Field>
+                        <details>
+                            <summary className="cursor-pointer text-sm font-medium text-primary">
+                                Tempel tabel dari spreadsheet
+                            </summary>
+                            <div className="mt-3 space-y-3">
+                                <Textarea
+                                    aria-label="Tabel waktu jalan dalam menit"
+                                    value={paste}
+                                    disabled={busy || apply.processing}
+                                    onChange={(event) =>
+                                        setPaste(event.target.value)
+                                    }
+                                />
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    disabled={busy || apply.processing}
+                                    onClick={importTable}
+                                >
+                                    Gunakan tabel
+                                </Button>
+                            </div>
+                        </details>
+                        <div className="max-w-full overflow-x-auto rounded-xl border">
+                            <table className="w-full text-sm">
+                                <caption className="sr-only">
+                                    Waktu jalan antar titik dalam menit
+                                </caption>
+                                <thead>
+                                    <tr>
+                                        <th className="p-3 text-left">
+                                            Dari / ke
+                                        </th>
+                                        {names.map((name, i) => (
+                                            <th
+                                                key={name}
+                                                className="min-w-24 p-3"
+                                                title={name}
+                                            >
+                                                {i === 0
+                                                    ? "Depot"
+                                                    : `Tujuan ${i}`}
+                                            </th>
+                                        ))}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {names.map((name, i) => (
+                                        <tr key={name} className="border-t">
+                                            <th
+                                                scope="row"
+                                                className="min-w-36 max-w-48 p-3 text-left font-medium"
+                                            >
+                                                {i === 0 ? (
+                                                    "Depot"
+                                                ) : (
+                                                    <>
+                                                        <span className="block">
+                                                            Tujuan {i}{" "}
+                                                            {orders[i - 1]
+                                                                .delivery_type ===
+                                                                "express" &&
+                                                                "· Express"}
+                                                        </span>
+                                                        <span className="block break-words text-xs text-muted-foreground">
+                                                            {name}
+                                                        </span>
+                                                    </>
+                                                )}
+                                            </th>
+                                            {names.map((destination, j) => (
+                                                <td
+                                                    key={destination}
+                                                    className="p-2"
+                                                >
+                                                    <Input
+                                                        type="number"
+                                                        min={0}
+                                                        max={1440}
+                                                        step={1}
+                                                        aria-label={`Waktu ${name} ke ${destination}`}
+                                                        value={matrix[i][j]}
+                                                        disabled={
+                                                            i === j ||
+                                                            busy ||
+                                                            apply.processing
+                                                        }
+                                                        onChange={(event) => {
+                                                            setMatrix((rows) =>
+                                                                rows.map(
+                                                                    (row, r) =>
+                                                                        r === i
+                                                                            ? row.map(
+                                                                                  (
+                                                                                      value,
+                                                                                      c,
+                                                                                  ) =>
+                                                                                      c ===
+                                                                                      j
+                                                                                          ? event
+                                                                                                .target
+                                                                                                .value
+                                                                                          : value,
+                                                                              )
+                                                                            : row,
+                                                                ),
+                                                            );
+                                                            setPreview(null);
+                                                        }}
+                                                    />
+                                                </td>
+                                            ))}
+                                        </tr>
                                     ))}
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
                 <label className="flex items-start gap-3 text-sm">
                     <input
                         type="checkbox"

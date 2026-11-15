@@ -22,6 +22,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        \App\Models\Order::observe(\App\Observers\OrderObserver::class);
+        \App\Models\Trip::observe(\App\Observers\TripObserver::class);
         RateLimiter::for('login', fn (Request $request) => [
             Limit::perMinute(5)->by(mb_strtolower(trim((string) $request->input('email'))).'|'.$request->ip()),
             Limit::perMinute(30)->by($request->ip()),

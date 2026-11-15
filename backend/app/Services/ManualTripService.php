@@ -151,6 +151,7 @@ class ManualTripService
                     $stop = DB::table('trip_stops')->insertGetId(['trip_id' => $id, 'route_version_id' => $trip->selected_route_version_id, 'order_id' => $candidate['id'], 'sequence_no' => $index + 1, 'status' => 'pending', 'planned_service_seconds' => $old['depot']['default_service_seconds'], 'created_at' => now(), 'updated_at' => now()]);
                     DB::table('active_order_allocations')->insert(['order_id' => $candidate['id'], 'trip_id' => $id, 'trip_stop_id' => $stop]);
                     Order::whereKey($candidate['id'])->update(['status' => 'assigned', 'lock_version' => DB::raw('lock_version + 1'), 'updated_at' => now()]);
+                    app(\App\Observers\OrderObserver::class)->assigned(Order::findOrFail($candidate['id']));
                 }
                 DB::table('courier_trip_locks')->insert(['courier_id' => $trip->courier_id, 'trip_id' => $id]);
                 DB::table('vehicle_trip_locks')->insert(['vehicle_id' => $trip->vehicle_id, 'trip_id' => $id]);

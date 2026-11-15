@@ -74,6 +74,80 @@ class CheckoutTest extends TestCase
         return array_replace(['address_id' => (string) $this->address->id, 'delivery_slot_id' => (string) $this->slot->id, 'items' => [['product_id' => (string) $this->a->id, 'quantity' => 2], ['product_id' => (string) $this->b->id, 'quantity' => 1]], 'expected_total_rp' => 45000], $overrides);
     }
 
+    public function test_notifications_are_atomic_owned_and_checkout_retry_does_not_duplicate(): void
+    {
+        $key = Str::uuid()->toString();
+        $order = $this->create(key: $key)->assertCreated()->json('data.id');
+        $this->create(key: $key)->assertCreated();
+        $this->assertSame(1, $this->customer->notifications()->count());
+        $feed = $this->getJson('/api/v1/notifications')->assertOk()->assertJsonPath('unread_count', 1)->json();
+        $id = $feed['data']['data'][0]['id'];
+        $this->assertSame($order, $feed['data']['data'][0]['data']['target_id']);
+        $this->putJson('/api/v1/notifications/'.$id.'/read')->assertOk();
+        $this->putJson('/api/v1/notifications/'.$id.'/read')->assertOk();
+        $this->getJson('/api/v1/notifications')->assertOk()->assertJsonPath('unread_count', 0);
+        $before = $this->customer->notifications()->count();
+        try {
+            DB::transaction(function () use ($order) {
+                $model = Order::findOrFail($order);
+                $model->status = 'confirmed';
+                $model->save();
+                throw new \RuntimeException('Test rollback');
+            });
+        } catch (\RuntimeException $error) {
+            $this->assertSame('Test rollback', $error->getMessage());
+        }
+        $this->assertSame($before, $this->customer->notifications()->count());
+        $this->assertSame('pending', Order::findOrFail($order)->status);
+        $this->app['auth']->forgetGuards();
+        $this->withToken(User::factory()->create()->createToken('other')->plainTextToken);
+        $this->putJson('/api/v1/notifications/'.$id.'/read')->assertNotFound();
+        $this->getJson('/api/v1/notifications')->assertOk()->assertJsonPath('unread_count', 0);
+    }
+
+    public function test_road_checkout_snapshots_pricing_and_retries_after_provider_recovers(): void
+    {
+        config(['navigation.road_pricing' => true]);
+        $key = Str::uuid()->toString();
+        \Illuminate\Support\Facades\Http::fake(fn () => throw new \Illuminate\Http\Client\ConnectionException());
+        $payload = $this->payload(['expected_total_rp' => 47000]);
+        $this->create($payload, $key)->assertStatus(503)->assertJsonPath('code', 'ROUTING_OFFLINE');
+        $this->assertDatabaseCount('orders', 0);
+        $this->assertDatabaseCount('idempotency_records', 0);
+        \Illuminate\Support\Facades\Http::swap(new \Illuminate\Http\Client\Factory());
+        \Illuminate\Support\Facades\Http::fake([
+            '127.0.0.1:8002/health' => \Illuminate\Support\Facades\Http::response(['status' => 'ok', 'bbox' => [-8, 112, -7, 113], 'dataset_id' => 'qa-roads']),
+            '127.0.0.1:8002/route' => \Illuminate\Support\Facades\Http::response(['trip' => ['summary' => ['time' => 301, 'length' => 2.1], 'legs' => [['shape' => 'qa']]]]),
+        ]);
+        $quote = $payload;
+        unset($quote['expected_total_rp']);
+        $this->postJson('/api/v1/order-quotes', $quote)->assertOk()
+            ->assertJsonPath('data.distance_basis', 'road')->assertJsonPath('data.delivery_fee_rp', 5000)
+            ->assertJsonPath('data.preparation_minutes', 36)->assertJsonPath('data.delivery_estimate.travel_seconds', 301);
+        $first = $this->create($payload, $key)->assertCreated()
+            ->assertJsonPath('data.delivery_distance_m', 2100)->assertJsonPath('data.delivery_estimate.dataset_id', 'qa-roads')->json();
+        $this->create($payload, $key)->assertCreated()->assertExactJson($first);
+        $this->assertDatabaseCount('orders', 1);
+        $this->assertDatabaseCount('stock_reservations', 2);
+        $this->assertSame('qa-roads', Order::first()->delivery_estimate['dataset_id']);
+    }
+
+    public function test_road_estimate_is_rejected_when_address_changes_during_calculation(): void
+    {
+        config(['navigation.road_pricing' => true]);
+        \Illuminate\Support\Facades\Cache::flush();
+        \Illuminate\Support\Facades\Http::fake([
+            '*/health' => \Illuminate\Support\Facades\Http::response(['status' => 'ok', 'bbox' => [-8, 112, -7, 113]]),
+            '*/route' => function () {
+                Address::whereKey($this->address->id)->increment('lock_version');
+                return \Illuminate\Support\Facades\Http::response(['trip' => ['summary' => ['time' => 60, 'length' => 0.2], 'legs' => [['shape' => 'qa']]]]);
+            },
+        ]);
+        $this->create()->assertStatus(409)->assertJsonPath('code', 'DELIVERY_CHANGED');
+        $this->assertDatabaseCount('orders', 0);
+        $this->assertDatabaseCount('stock_reservations', 0);
+    }
+
     private function create(array $payload = [], ?string $key = null)
     {
         return $this->postJson('/api/v1/orders', $payload ?: $this->payload(), ['Idempotency-Key' => $key ?? Str::uuid()->toString()]);

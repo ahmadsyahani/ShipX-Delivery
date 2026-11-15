@@ -2,6 +2,36 @@ import 'package:flutter/material.dart';
 import '../core/app_theme.dart';
 import '../delivery/delivery_page.dart' show slotDate, slotTime;
 
+class DeliveryEstimateNote extends StatelessWidget {
+  const DeliveryEstimateNote({super.key, required this.data});
+  final Map<String, dynamic> data;
+
+  @override
+  Widget build(BuildContext context) {
+    final estimate = data['delivery_estimate'] as Map<String, dynamic>?;
+    if (estimate == null) return const SizedBox.shrink();
+    final distance = (data['delivery_distance_m'] as num? ?? 0) / 1000;
+    final minutes = ((estimate['travel_seconds'] as num? ?? 0) / 60).ceil();
+    final calculated = DateTime.tryParse(
+      '${estimate['calculated_at']}',
+    )?.toLocal();
+    final when = calculated == null
+        ? ''
+        : ' · dihitung ${calculated.hour.toString().padLeft(2, '0')}.${calculated.minute.toString().padLeft(2, '0')}';
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Text(
+        'Jarak jalan ${distance.toStringAsFixed(1).replaceAll('.', ',')} km · perjalanan ±${minutes < 1 ? 1 : minutes} menit\nValhalla · ${estimate['travel_mode'] == 'car' ? 'mobil' : 'motor'}$when',
+        style: const TextStyle(
+          fontSize: 11,
+          height: 1.5,
+          color: AppColors.textMuted,
+        ),
+      ),
+    );
+  }
+}
+
 class DeliverySummary extends StatelessWidget {
   const DeliverySummary({
     super.key,

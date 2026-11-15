@@ -21,6 +21,10 @@ Route::get('/product-photos/{file}', [\App\Http\Controllers\ProductPhotoControll
 Route::post('/admin/login', [AdminSessionController::class, 'store'])->middleware('throttle:login');
 Route::middleware(['auth:web', 'active.role:admin'])->prefix('admin')->group(function (): void {
     Route::get('/', AdminDashboardController::class)->name('admin.home');
+    Route::get('monitor', [\App\Http\Controllers\AdminOperationsController::class, 'monitor']);
+    Route::get('monitor/positions', [\App\Http\Controllers\AdminOperationsController::class, 'positions'])->middleware('throttle:30,1');
+    Route::get('reports', [\App\Http\Controllers\AdminOperationsController::class, 'reports']);
+    Route::get('reports/export', [\App\Http\Controllers\AdminOperationsController::class, 'export']);
     Route::get('stock', [StockController::class, 'index'])->name('admin.stock.index');
     Route::get('stock/{product}', [StockController::class, 'edit'])->name('admin.stock.edit');
     Route::post('stock/{product}', [StockController::class, 'store'])->name('admin.stock.store');
@@ -29,6 +33,8 @@ Route::middleware(['auth:web', 'active.role:admin'])->prefix('admin')->group(fun
     Route::post('orders/{order}/confirm', [AdminOrderController::class, 'confirm'])->name('admin.orders.confirm');
     Route::post('orders/{order}/reject', [AdminOrderController::class, 'reject'])->name('admin.orders.reject');
     Route::get('depot', [DepotController::class, 'edit'])->name('admin.depot.edit');
+    Route::get('routing/status', [\App\Http\Controllers\AdminTripRoutingController::class, 'status']);
+    Route::post('trips/{trip}/route-preview', [\App\Http\Controllers\AdminTripRoutingController::class, 'preview'])->middleware('throttle:30,1');
     Route::put('depot', [DepotController::class, 'update'])->name('admin.depot.update');
     Route::post('slots/prepare', function () {
         $count = app(\App\Services\DeliveryScheduleGenerator::class)->generate();

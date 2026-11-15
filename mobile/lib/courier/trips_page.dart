@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../core/app_theme.dart';
 import '../core/app_widgets.dart';
+import '../core/contact_button.dart';
 import '../core/auth_api.dart';
 import '../core/auth_session.dart';
 import '../commerce/order_refresh.dart';
@@ -10,6 +11,7 @@ import 'trip_start_panel.dart';
 import 'delivery_result_panel.dart';
 import 'reconciliation_view.dart';
 import 'trip_overview.dart';
+import 'trip_map_page.dart';
 import '../commerce/shop_widgets.dart' show CodTotal;
 
 class CourierTripsPage extends StatefulWidget {
@@ -22,6 +24,7 @@ class CourierTripsPage extends StatefulWidget {
   final AuthSession session;
   final bool active;
   final String? id;
+
   @override
   State<CourierTripsPage> createState() => _CourierTripsPageState();
 }
@@ -103,15 +106,13 @@ class _CourierTripsPageState extends State<CourierTripsPage>
 
   String _when(dynamic value, String timezone) =>
       '${slotDate(value as String, timezone)} ${slotTime(value, timezone)}';
-
-  Widget _summary(Map<String, dynamic> t, {bool detail = false}) {
+  Widget _summary(Map<String, dynamic> t) {
     final v = t['vehicle'] as Map<String, dynamic>;
     final tz = t['timezone'] as String;
     final inProgress = [
       'in_progress',
       'awaiting_reconciliation',
     ].contains(t['status']);
-
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(18),
@@ -222,10 +223,10 @@ class _CourierTripsPageState extends State<CourierTripsPage>
                       ],
                     ),
                   ],
-                  if (detail && t['estimated_return_at'] != null) ...[
+                  if (t['estimated_return_at'] != null) ...[
                     const SizedBox(height: 4),
                     Text(
-                      'Estimasi manual kembali: ${_when(t['estimated_return_at'], tz)}',
+                      'Estimasi rencana kembali: ${_when(t['estimated_return_at'], tz)}',
                       style: const TextStyle(
                         fontSize: 12,
                         color: AppColors.textMuted,
@@ -251,272 +252,287 @@ class _CourierTripsPageState extends State<CourierTripsPage>
                 ),
               ),
             ),
-            if (!detail)
-              Padding(
-                padding: const EdgeInsets.only(top: 10),
-                child: Align(
-                  alignment: Alignment.centerRight,
-                  child: FilledButton.icon(
-                    style: FilledButton.styleFrom(
-                      minimumSize: const Size(40, 38),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 8,
-                      ),
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size(40, 38),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 8,
                     ),
-                    onPressed: () async {
-                      await Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => CourierTripsPage(
-                            session: widget.session,
-                            id: t['id'].toString(),
-                          ),
+                  ),
+                  onPressed: () async {
+                    await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => CourierTripsPage(
+                          session: widget.session,
+                          id: t['id'].toString(),
                         ),
-                      );
-                      if (mounted) _load(background: true);
-                    },
-                    icon: const Icon(Icons.arrow_forward, size: 16),
-                    label: const Text(
-                      'Lihat tujuan',
-                      style: TextStyle(fontSize: 13),
-                    ),
+                      ),
+                    );
+                    if (mounted) _load(background: true);
+                  },
+                  icon: const Icon(Icons.arrow_forward, size: 16),
+                  label: const Text(
+                    'Lihat tujuan',
+                    style: TextStyle(fontSize: 13),
                   ),
                 ),
               ),
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _detail(Map<String, dynamic> t) {
-    final tz = t['timezone'] as String;
-    final depot = t['depot'] as Map<String, dynamic>;
-    final stops = (t['stops'] as List).cast<Map<String, dynamic>>();
+  Widget _detail(Map<String, dynamic> trip) {
+    final timezone = trip['timezone'] as String;
+    final depot = trip['depot'] as Map<String, dynamic>;
+    final vehicle = trip['vehicle'] as Map<String, dynamic>;
+    final stops = (trip['stops'] as List).cast<Map<String, dynamic>>();
+    final next = stops
+        .where((stop) => !['delivered', 'failed'].contains(stop['status']))
+        .firstOrNull;
+    final completed = trip['status'] == 'completed';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        TripOverview(trip: t, session: widget.session),
-        const SizedBox(height: 14),
-        _summary(t, detail: true),
-        if (t['reconciliation'] != null) ...[
-          const SizedBox(height: 14),
-          ReconciliationView(
-            summary: t['reconciliation'] as Map<String, dynamic>,
-            timezone: tz,
-          ),
-        ],
-        if (t['manifest'] != null && t['status'] != 'completed') ...[
-          const SizedBox(height: 14),
-          TripStartPanel(
-            externalBusy: _fetching,
-            session: widget.session,
-            trip: t,
-            onRefresh: () => _load(background: true),
-            onBusyChanged: (value) => setState(() => _starting = value),
-          ),
-        ],
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 4),
-          child: Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppColors.border),
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Icon(
-                  Icons.warehouse_outlined,
-                  size: 20,
-                  color: AppColors.primary,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    'Dari ${depot['name']}\n${depot['address_text']}\nKembali ke depot setelah seluruh tujuan.',
-                    style: const TextStyle(
-                      fontSize: 13,
-                      height: 1.4,
-                      color: AppColors.textBody,
-                    ),
+        TripOverview(
+          trip: trip,
+          session: widget.session,
+          content: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              ExpansionTile(
+                tilePadding: const EdgeInsets.symmetric(horizontal: 18),
+                title: Text(
+                  '${vehicle['plate_number']} · ${vehicle['name']}',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
-              ],
-            ),
-          ),
-        ),
-        ...stops.map((s) {
-          final address = s['address'] as Map<String, dynamic>;
-          final items = (s['items'] as List).cast<Map<String, dynamic>>();
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Card(
-              child: Padding(
+                subtitle: Text(
+                  'Berangkat ${_when(trip['planned_departure_at'], timezone)}',
+                  style: const TextStyle(fontSize: 12),
+                ),
+                childrenPadding: const EdgeInsets.fromLTRB(18, 0, 18, 12),
+                expandedCrossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${trip['trip_number']}',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: AppColors.textMuted,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Depot ${depot['name']} · ${depot['address_text']}',
+                    style: const TextStyle(fontSize: 12, height: 1.5),
+                  ),
+                  ContactButton(
+                    phone: depot['phone'] as String?,
+                    label: 'Hubungi depot',
+                  ),
+                  if (trip['estimated_return_at'] != null)
+                    Text(
+                      'Estimasi kembali ${_when(trip['estimated_return_at'], timezone)}',
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                ],
+              ),
+              if (trip['manifest'] != null && !completed)
+                TripStartPanel(
+                  externalBusy: _fetching,
+                  session: widget.session,
+                  trip: trip,
+                  onRefresh: () => _load(background: true),
+                  onBusyChanged: (value) => setState(() => _starting = value),
+                ),
+              const SizedBox(height: 6),
+              Padding(
                 padding: const EdgeInsets.all(18),
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Row(
-                      children: [
-                        Container(
-                          width: 28,
-                          height: 28,
-                          decoration: BoxDecoration(
-                            color: AppColors.primary,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Center(
-                            child: Text(
-                              '${s['sequence_no']}',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w800,
-                                fontSize: 13,
-                              ),
+                    if (!completed) ...[
+                      FilledButton.icon(
+                        onPressed: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => TripMapPage(
+                              trip: trip,
+                              session: widget.session,
                             ),
                           ),
                         ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            'Tujuan ${s['sequence_no']} · ${s['order_number']}',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 15,
-                              color: AppColors.textMain,
-                            ),
-                          ),
+                        icon: const Icon(Icons.map_outlined, size: 18),
+                        label: Text(
+                          trip['status'] == 'awaiting_reconciliation'
+                              ? 'Rute kembali ke depot'
+                              : 'Peta tujuan',
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
+                      ),
+                      const SizedBox(height: 14),
+                    ],
                     Text(
-                      '${address['recipient_name']} · ${address['phone']}',
+                      'Tujuan pengantaran · ${stops.length}',
                       style: const TextStyle(
-                        fontWeight: FontWeight.w600,
                         fontSize: 14,
-                        color: AppColors.textMain,
+                        fontWeight: FontWeight.w800,
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      address['address_text'],
-                      style: const TextStyle(
-                        fontSize: 13,
-                        color: AppColors.textBody,
-                      ),
-                    ),
-                    if (address['directions'] != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 6),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 6,
-                          ),
-                          decoration: BoxDecoration(
-                            color: AppColors.warningBg,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Row(
-                            children: [
-                              const Icon(
-                                Icons.directions,
-                                size: 14,
-                                color: AppColors.warning,
-                              ),
-                              const SizedBox(width: 6),
-                              Expanded(
-                                child: Text(
-                                  address['directions'],
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w500,
-                                    color: AppColors.warning,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.schedule,
-                          size: 15,
-                          color: AppColors.textMuted,
-                        ),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            'Jendela: ${_when(s['window_start_at'], tz)} – ${_when(s['window_end_at'], tz)}',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: AppColors.textBody,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    if (s['estimated_arrival_at'] != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: Text(
-                          'Estimasi manual tiba: ${_when(s['estimated_arrival_at'], tz)}',
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: AppColors.textMuted,
-                          ),
-                        ),
-                      ),
-                    const Divider(height: 24),
-                    ...items.map(
-                      (i) => Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: Text(
-                          '${i['quantity']} item · ${i['name']}${i['handling_notes'] == null ? '' : '\n${i['handling_notes']}'}',
-                          style: const TextStyle(
-                            fontSize: 13,
-                            color: AppColors.textBody,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 10,
-                      ),
-                      decoration: BoxDecoration(
-                        color: AppColors.primaryLight,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: CodTotal(amount: rupiah(s['total_rp'])),
-                    ),
-                    if (s['id'] != null)
-                      DeliveryResultPanel(
-                        key: ValueKey('result-${s['id']}'),
-                        session: widget.session,
-                        trip: t,
-                        stop: s,
-                        externalBusy: _fetching,
-                        onRefresh: () => _load(background: true),
-                        onBusyChanged: (busy) =>
-                            setState(() => _starting = busy),
-                      ),
                   ],
                 ),
               ),
+              ...stops.map(
+                (stop) => _stop(trip, stop, expanded: identical(stop, next)),
+              ),
+            ],
+          ),
+        ),
+        if (trip['reconciliation'] != null) ...[
+          const SizedBox(height: 14),
+          ReconciliationView(
+            summary: trip['reconciliation'] as Map<String, dynamic>,
+            timezone: timezone,
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _stop(
+    Map<String, dynamic> trip,
+    Map<String, dynamic> stop, {
+    required bool expanded,
+  }) {
+    final address = stop['address'] as Map<String, dynamic>;
+    final items = (stop['items'] as List).cast<Map<String, dynamic>>();
+    final timezone = trip['timezone'] as String;
+    final finished = ['delivered', 'failed'].contains(stop['status']);
+    return ExpansionTile(
+      key: ValueKey(
+        'trip-${trip['id']}-stop-${stop['id'] ?? stop['sequence_no']}-active-$expanded',
+      ),
+      initiallyExpanded: expanded,
+      tilePadding: const EdgeInsets.symmetric(horizontal: 18),
+      childrenPadding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
+      leading: CircleAvatar(
+        radius: 16,
+        backgroundColor: finished
+            ? AppColors.background
+            : AppColors.primaryLight,
+        child: Text(
+          '${stop['sequence_no']}',
+          style: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w800,
+            color: AppColors.primary,
+          ),
+        ),
+      ),
+      title: Text(
+        '${address['recipient_name']}',
+        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+      ),
+      subtitle: Padding(
+        padding: const EdgeInsets.only(top: 5),
+        child: Wrap(
+          spacing: 6,
+          runSpacing: 5,
+          children: [
+            StatusBadge(
+              status: 'assigned',
+              text: stop['delivery_type'] == 'express' ? 'Express' : 'Reguler',
             ),
-          );
-        }),
+            if (finished)
+              StatusBadge(
+                status: stop['status'],
+                text: stop['status'] == 'delivered'
+                    ? 'Terkirim'
+                    : 'Gagal diantar',
+              ),
+          ],
+        ),
+      ),
+      children: [
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              '${address['recipient_name']} · ${address['phone']}',
+              style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '${address['address_text']}',
+              style: const TextStyle(fontSize: 13, height: 1.5),
+            ),
+            if (address['directions'] != null &&
+                '${address['directions']}'.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  '${address['directions']}',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: AppColors.warning,
+                  ),
+                ),
+              ),
+            const SizedBox(height: 8),
+            Text(
+              '${_when(stop['window_start_at'], timezone)} – ${slotTime(stop['window_end_at'], timezone)}',
+              style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+            ),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: ContactButton(
+                phone: address['phone'] as String?,
+                label: 'Hubungi penerima',
+              ),
+            ),
+            if (stop['estimated_arrival_at'] != null)
+              Text(
+                'Estimasi tiba ${_when(stop['estimated_arrival_at'], timezone)}',
+                style: const TextStyle(fontSize: 12, color: AppColors.primary),
+              ),
+            const SizedBox(height: 10),
+            ...items.map(
+              (item) => Padding(
+                padding: const EdgeInsets.only(bottom: 5),
+                child: Text(
+                  '${item['quantity']} item · ${item['name']}${item['handling_notes'] == null ? '' : '\n${item['handling_notes']}'}',
+                  style: const TextStyle(fontSize: 13),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              child: CodTotal(amount: rupiah(stop['total_rp'])),
+            ),
+            Text(
+              '${stop['order_number']}',
+              style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
+            ),
+            if (stop['id'] != null)
+              DeliveryResultPanel(
+                key: ValueKey('result-${stop['id']}'),
+                session: widget.session,
+                trip: trip,
+                stop: stop,
+                externalBusy: _fetching,
+                onRefresh: () => _load(background: true),
+                onBusyChanged: (busy) => setState(() => _starting = busy),
+              ),
+          ],
+        ),
       ],
     );
   }
@@ -530,30 +546,28 @@ class _CourierTripsPageState extends State<CourierTripsPage>
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: AppPageIntro(
-                  title: widget.id == null
-                      ? 'Siap mengantar?'
-                      : 'Detail perjalanan',
-                  description: widget.id == null
-                      ? 'Siapkan perjalanan dan lihat penugasanmu.'
-                      : 'Periksa muatan, tujuan, dan jadwal perjalanan.',
+          if (widget.id == null)
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: AppPageIntro(
+                    title: 'Siap mengantar?',
+                    description: 'Siapkan perjalanan dan lihat penugasanmu.',
+                  ),
                 ),
-              ),
-              IconButton(
-                onPressed: _fetching || _starting ? null : _load,
-                tooltip: 'Perbarui tugas',
-                icon: const Icon(Icons.refresh_rounded),
-              ),
-            ],
-          ),
-          const InfoBanner(
-            message:
-                'Jadwal perjalanan menggunakan estimasi manual. Periksa muatan dan catat hasil pada setiap tujuan.',
-          ),
+                IconButton(
+                  onPressed: _fetching || _starting ? null : _load,
+                  tooltip: 'Perbarui tugas',
+                  icon: const Icon(Icons.refresh_rounded),
+                ),
+              ],
+            ),
+          if (widget.id == null)
+            const InfoBanner(
+              message:
+                  'Jadwal perjalanan mengikuti rencana yang ditinjau admin. Muatan mengikuti manifest. Catat hasil pada setiap tujuan.',
+            ),
           if (_error != null)
             Padding(
               padding: const EdgeInsets.only(top: 12),
@@ -630,7 +644,16 @@ class _CourierTripsPageState extends State<CourierTripsPage>
     return widget.id == null
         ? content
         : Scaffold(
-            appBar: AppBar(title: const Text('Detail trip')),
+            appBar: AppBar(
+              title: const Text('Detail trip'),
+              actions: [
+                IconButton(
+                  onPressed: _fetching || _starting ? null : _load,
+                  tooltip: 'Perbarui tugas',
+                  icon: const Icon(Icons.refresh_rounded),
+                ),
+              ],
+            ),
             body: content,
           );
   }

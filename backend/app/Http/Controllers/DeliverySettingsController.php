@@ -31,7 +31,11 @@ class DeliverySettingsController extends Controller
                 throw \Illuminate\Validation\ValidationException::withMessages(['address_id' => 'Alamat berada di luar wilayah layanan.']);
             }
             foreach (['regular', 'express'] as $type) {
-                $options[] = app(\App\Services\DeliveryPolicy::class)->pricing($depot, $distance, $type);
+                try {
+                    $options[] = app(\App\Services\DeliveryPolicy::class)->forAddress($depot, $address->latitude, $address->longitude, $type);
+                } catch (\App\Exceptions\BusinessFailure $error) {
+                    return response()->json($error->body(), $error->status);
+                }
             }
             if (($filters['delivery_type'] ?? 'regular') === 'express') {
                 $query->where('window_start_at', '>=', now()->addMinutes($options[1]['preparation_minutes']));

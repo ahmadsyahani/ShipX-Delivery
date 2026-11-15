@@ -77,6 +77,21 @@
     }
 }
 
+.leaflet-tooltip.shipx-route-number {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid white;
+    border-radius: 50%;
+    background: #006241;
+    color: white;
+    font-weight: 700;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    box-shadow: none;
+}
+
 @layer components {
     .shipx-sidebar {
         background: #182e40;

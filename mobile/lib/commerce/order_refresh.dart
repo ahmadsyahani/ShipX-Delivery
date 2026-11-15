@@ -7,7 +7,10 @@ mixin OrderRefresh<T extends StatefulWidget> on State<T> {
   Timer? _orderTimer;
   AppLifecycleListener? _orderLifecycle;
 
-  void startOrderRefresh(Future<void> Function() refresh) {
+  void startOrderRefresh(
+    Future<void> Function() refresh, {
+    Duration interval = const Duration(seconds: 15),
+  }) {
     void check() {
       if (!mounted || ModalRoute.of(context)?.isCurrent != true) return;
       final lifecycle = WidgetsBinding.instance.lifecycleState;
@@ -15,7 +18,7 @@ mixin OrderRefresh<T extends StatefulWidget> on State<T> {
       unawaited(refresh());
     }
 
-    _orderTimer = Timer.periodic(const Duration(seconds: 15), (_) => check());
+    _orderTimer = Timer.periodic(interval, (_) => check());
     _orderLifecycle = AppLifecycleListener(onResume: check);
   }
 

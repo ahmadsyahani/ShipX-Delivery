@@ -122,8 +122,21 @@ export default function OrderDetail({
                                 ? "Express · jadwal terdekat"
                                 : "Reguler"}
                             {order.delivery_distance_m != null &&
-                                ` · ${(order.delivery_distance_m / 1000).toFixed(1)} km perkiraan`}
+                                ` · ${(order.delivery_distance_m / 1000).toFixed(1)} km ${order.delivery_estimate?.distance_basis === "road" ? "jalan" : "perkiraan"}`}
                         </p>
+                        {order.delivery_estimate && (
+                            <p className="mb-4 text-xs text-muted-foreground">
+                                Valhalla · estimasi{" "}
+                                {Math.ceil(
+                                    order.delivery_estimate.travel_seconds / 60,
+                                )}{" "}
+                                menit perjalanan · dihitung{" "}
+                                {dateTime(
+                                    order.delivery_estimate.calculated_at,
+                                    order.timezone_snapshot,
+                                )}
+                            </p>
+                        )}
                         <div className="grid gap-6 sm:grid-cols-2">
                             <div className="flex items-start gap-3">
                                 <MapPin className="mt-1 size-4 shrink-0 text-primary" />

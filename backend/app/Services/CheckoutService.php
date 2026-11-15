@@ -19,13 +19,17 @@ class CheckoutService
 
     public function quote(int $customer, array $payload): array
     {
-        return DB::transaction(fn () => $this->prepare($customer, $payload)['quote']);
+        $estimate = $this->estimate($customer, $payload);
+
+        return DB::transaction(fn () => $this->prepare($customer, $payload, $estimate)['quote']);
     }
 
     public function checkout(int $customer, array $payload): Order
     {
-        return DB::transaction(function () use ($customer, $payload) {
-            $prepared = $this->prepare($customer, $payload);
+        $estimate = $this->estimate($customer, $payload);
+
+        return DB::transaction(function () use ($customer, $payload, $estimate) {
+            $prepared = $this->prepare($customer, $payload, $estimate);
             $quote = $prepared['quote'];
             $depot = $prepared['depot'];
             $address = $prepared['address'];
@@ -43,7 +47,7 @@ class CheckoutService
             $order = Order::create([
                 'order_number' => 'SX-'.now()->format('Ymd').'-'.Str::ulid(), 'depot_id' => 1, 'customer_id' => $customer, 'source_address_id' => $address->id, 'delivery_slot_id' => $slot->id, 'status' => 'pending', 'payment_status' => 'unpaid',
                 'recipient_name' => $address->recipient_name, 'recipient_phone' => $address->phone, 'address_text' => $address->address_text, 'latitude' => $address->latitude, 'longitude' => $address->longitude, 'directions' => $address->directions, 'timezone_snapshot' => $depot->timezone,
-                'delivery_type' => $quote['delivery_type'], 'delivery_distance_m' => $quote['delivery_distance_m'], 'window_start_at' => $slot->window_start_at, 'window_end_at' => $slot->window_end_at, 'subtotal_rp' => $quote['subtotal_rp'], 'delivery_fee_rp' => $quote['delivery_fee_rp'], 'total_rp' => $quote['total_rp'], 'total_weight_g' => $quote['total_weight_g'], 'total_volume_cm3' => $quote['total_volume_cm3'], 'pending_expires_at' => $expires,
+                'delivery_estimate' => $quote['delivery_estimate'] ?? null, 'delivery_type' => $quote['delivery_type'], 'delivery_distance_m' => $quote['delivery_distance_m'], 'window_start_at' => $slot->window_start_at, 'window_end_at' => $slot->window_end_at, 'subtotal_rp' => $quote['subtotal_rp'], 'delivery_fee_rp' => $quote['delivery_fee_rp'], 'total_rp' => $quote['total_rp'], 'total_weight_g' => $quote['total_weight_g'], 'total_volume_cm3' => $quote['total_volume_cm3'], 'pending_expires_at' => $expires,
             ]);
             foreach ($quote['items'] as $item) {
                 $row = $order->items()->create(['product_id' => $item['product_id'], 'product_name_snapshot' => $item['name'], 'unit_label_snapshot' => $item['unit_label'], 'quantity' => $item['quantity'], 'unit_price_rp' => $item['unit_price_rp'], 'line_total_rp' => $item['line_total_rp'], 'unit_weight_g' => $item['unit_weight_g'], 'unit_volume_cm3' => $item['unit_volume_cm3'], 'length_mm_snapshot' => $item['length_mm'], 'width_mm_snapshot' => $item['width_mm'], 'height_mm_snapshot' => $item['height_mm'], 'handling_notes_snapshot' => $item['handling_notes']]);
@@ -54,7 +58,25 @@ class CheckoutService
         });
     }
 
-    private function prepare(int $customer, array $payload): array
+    private function estimate(int $customer, array $payload): ?array
+    {
+        if (! config('navigation.road_pricing')) {
+            return null;
+        }
+        $depot = Depot::findOrFail(1);
+        if (! $depot->configured()) {
+            throw new BusinessFailure('DELIVERY_NOT_CONFIGURED', 'Depot belum siap menerima pesanan.');
+        }
+        $address = Address::where('user_id', $customer)->where('is_active', true)->findOrFail($payload['address_id']);
+        if (! $this->area->contains($depot, $address->latitude, $address->longitude)) {
+            throw ValidationException::withMessages(['address_id' => 'Alamat berada di luar wilayah layanan saat ini.']);
+        }
+
+        return ['depot_version' => $depot->lock_version, 'address_version' => $address->lock_version,
+            'pricing' => app(DeliveryPolicy::class)->forAddress($depot, $address->latitude, $address->longitude, $payload['delivery_type'] ?? 'regular')];
+    }
+
+    private function prepare(int $customer, array $payload, ?array $estimate = null): array
     {
         // Single depot is the outer mutex for this MVP. Within it every inventory
         // account is locked in ascending ID order, before any order mutation.
@@ -71,7 +93,10 @@ class CheckoutService
             throw ValidationException::withMessages(['address_id' => 'Alamat berada di luar wilayah layanan saat ini.']);
         }
         $policy = app(DeliveryPolicy::class);
-        $pricing = $policy->pricing($depot, $this->area->distance($depot, $address->latitude, $address->longitude), $payload['delivery_type'] ?? 'regular');
+        if ($estimate && ($estimate['depot_version'] !== $depot->lock_version || $estimate['address_version'] !== $address->lock_version)) {
+            throw new BusinessFailure('DELIVERY_CHANGED', 'Alamat atau konfigurasi pengiriman berubah. Hitung ulang total.');
+        }
+        $pricing = $estimate['pricing'] ?? $policy->forAddress($depot, $address->latitude, $address->longitude, $payload['delivery_type'] ?? 'regular');
         if ($pricing['delivery_type'] === 'express' && $slot->window_start_at < now()->addMinutes($pricing['preparation_minutes'])) {
             throw new BusinessFailure('SLOT_CLOSED', 'Waktu persiapan Express tidak cukup. Pilih jadwal berikutnya.');
         }

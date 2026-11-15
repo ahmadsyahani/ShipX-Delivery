@@ -295,6 +295,7 @@ class _CartPageState extends State<CartPage> {
                           padding: EdgeInsets.symmetric(vertical: 12),
                           child: Divider(height: 1, color: AppColors.border),
                         ),
+                        if (valid) DeliveryEstimateNote(data: _quote!),
                         if (valid)
                           CodTotal(
                             key: const ValueKey('cart-cod-total'),

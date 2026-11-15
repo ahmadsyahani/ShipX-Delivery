@@ -1,4 +1,6 @@
 import 'package:geolocator/geolocator.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:latlong2/latlong.dart';
 
 class LocationFailure implements Exception {
@@ -6,15 +8,39 @@ class LocationFailure implements Exception {
   final String message;
 }
 
-/// Foreground location, requested only after an explicit location/navigation action.
+/// Location requested by a map action, with an Android service during navigation.
 class DeviceLocation {
   const DeviceLocation();
 
+  Future<void> prepareNavigation() async {
+    if (defaultTargetPlatform != TargetPlatform.android) return;
+    try {
+      await const MethodChannel(
+        'shipx/navigation',
+      ).invokeMethod<bool>('requestNotifications');
+    } on MissingPluginException {
+      // Non-Android test hosts can still exercise the GPS interface.
+    }
+  }
+
   Stream<Position> watch() => Geolocator.getPositionStream(
-    locationSettings: const LocationSettings(
-      accuracy: LocationAccuracy.high,
-      distanceFilter: 5,
-    ),
+    locationSettings: defaultTargetPlatform == TargetPlatform.android
+        ? AndroidSettings(
+            accuracy: LocationAccuracy.high,
+            distanceFilter: 0,
+            intervalDuration: const Duration(seconds: 5),
+            foregroundNotificationConfig: const ForegroundNotificationConfig(
+              notificationTitle: 'Navigasi ShipX aktif',
+              notificationText:
+                  'Navigasi pengiriman aktif. Buka ShipX untuk mengakhiri navigasi.',
+              enableWakeLock: true,
+              enableWifiLock: true,
+            ),
+          )
+        : const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            distanceFilter: 5,
+          ),
   );
 
   Future<LatLng> locate() async {

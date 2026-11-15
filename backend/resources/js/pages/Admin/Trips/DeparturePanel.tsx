@@ -1,3 +1,5 @@
+import type { RoadPreview } from "./RoadPreviewPanel";
+import { Button } from "@/components/ui/button";
 import { useForm } from "@inertiajs/react";
 import { Field, FormErrors, SaveButton, Section } from "@/components/admin";
 import { Input } from "@/components/ui/input";
@@ -48,12 +50,14 @@ export default function DeparturePanel({
     review,
     schedule,
     idempotencyKey,
+    roadPreview,
 }: {
     trip: Trip;
     manifest: ManifestRow[];
     review: DepartureReview | null;
     schedule: Schedule | null;
     idempotencyKey: string;
+    roadPreview?: RoadPreview | null;
 }) {
     const orders = trip.selected_route.input_snapshot.orders;
     const optimization = trip.selected_route.input_snapshot.optimization;
@@ -92,7 +96,7 @@ export default function DeparturePanel({
                         ? "Muatan sudah diberangkatkan"
                         : "Manifest muatan per SKU"
                 }
-                description="Kurir menghitung jumlah fisik setiap SKU. Start hanya menerima seluruh manifest yang sesuai."
+                description="Muatan disiapkan otomatis dari pesanan. Kurir meninjau manifest sebelum memulai trip."
             >
                 <div className="divide-y">
                     {manifest.map((row) => (
@@ -148,6 +152,29 @@ export default function DeparturePanel({
                         }}
                     >
                         <FormErrors errors={form.errors} />
+                        {roadPreview && (
+                            <Button
+                                type="button"
+                                variant="outline"
+                                disabled={form.processing}
+                                onClick={() => {
+                                    form.setData({
+                                        ...form.data,
+                                        leg_minutes:
+                                            roadPreview.leg_seconds.map(
+                                                (seconds) =>
+                                                    String(
+                                                        Math.ceil(seconds / 60),
+                                                    ),
+                                            ),
+                                        source_reference:
+                                            roadPreview.source_reference,
+                                    });
+                                }}
+                            >
+                                Gunakan waktu jalan dari peta
+                            </Button>
+                        )}
                         <p className="text-sm text-muted-foreground">
                             Isi seluruh ruas sesuai urutan, termasuk pulang.
                             Sistem memeriksa waktu tunggu dan batas selesai
@@ -237,7 +264,7 @@ export default function DeparturePanel({
             )}
             {review && shown && (
                 <Section
-                    title="Estimasi jadwal manual"
+                    title="Estimasi jadwal ditinjau"
                     description={
                         schedule
                             ? "Dihitung ulang saat keberangkatan aktual."

@@ -46,9 +46,12 @@ class TripDepartureReviewService
                 throw new BusinessFailure('REVIEW_TOO_EARLY', 'Tinjau estimasi jalan dalam 24 jam sebelum rencana keberangkatan.');
             }
             $legs = array_map(fn ($minutes) => (int) $minutes * 60, $data['leg_minutes']);
+            $optimization = $snapshot['optimization'] ?? [];
+            $source = isset($optimization['road_source']['provider']) && $legs === $optimization['leg_seconds'] && $data['source_reference'] === $optimization['source_reference']
+                ? 'provider_road_estimate' : 'manual_road_estimate';
             $schedule = app(TripScheduleService::class)->evaluate($snapshot, $legs, $trip->planned_departure_at->max($now));
             $trip->lock_version++;
-            $review = TripDepartureReview::create(['trip_id' => $id, 'route_version_id' => $trip->selected_route_version_id, 'trip_version' => $trip->lock_version, 'source' => 'manual_road_estimate', 'source_reference' => $data['source_reference'], 'leg_seconds' => $legs, 'schedule_snapshot' => $schedule, 'master_versions' => $versions, 'reviewed_by' => $actor, 'reason' => $data['reason'], 'handling_checked' => true, 'reviewed_at' => $now, 'expires_at' => $expires]);
+            $review = TripDepartureReview::create(['trip_id' => $id, 'route_version_id' => $trip->selected_route_version_id, 'trip_version' => $trip->lock_version, 'source' => $source, 'source_reference' => $data['source_reference'], 'leg_seconds' => $legs, 'schedule_snapshot' => $schedule, 'master_versions' => $versions, 'reviewed_by' => $actor, 'reason' => $data['reason'], 'handling_checked' => true, 'reviewed_at' => $now, 'expires_at' => $expires]);
             $trip->save();
             DB::table('trip_events')->insert(['trip_id' => $id, 'actor_id' => $actor, 'action' => 'departure_reviewed', 'trip_version' => $trip->lock_version, 'reason' => $data['reason'], 'created_at' => $now]);
 
